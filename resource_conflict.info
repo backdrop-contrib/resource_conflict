@@ -1,0 +1,4 @@
+name = Resource Conflict
+description = Provides a mechanism for notifying of event conflict based on nodereferenced resources.
+dependencies = event nodereference
+version = 0.1
