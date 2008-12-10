@@ -1,4 +1,4 @@
 name = Resource Conflict
-description = Provides a mechanism for notifying of event conflict based on nodereferenced resources.
-dependencies = event nodereference
-version = 0.1
+description = Provides a mechanism for notifying of conflict based on nodereferenced resources.
+dependencies = nodereference date_api content
+project = "resource_conflict"

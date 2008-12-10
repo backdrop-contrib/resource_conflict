@@ -1,2 +1,4 @@
 .settings
 .project
+.cache
+.buildpath

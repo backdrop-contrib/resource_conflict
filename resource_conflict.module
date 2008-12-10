@@ -1,105 +1,436 @@
 <?php
+// $Id$
+//VIM setup ex: et sw=2 ts=2 syntax=php
 
+/**
+ * Implementation of hook_nodeapi
+ *
+ * Determine if a required resource is currently booked.
+ */
 function resource_conflict_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
-  $type = $node->type;
-  
-  switch($op) {
+  switch ($op) {
     case 'validate':
-      if (variable_get('resource_conflict_' . $type, FALSE)) {
-        // Find the relevant fields to check against
-        $fields = variable_get('resource_conflict_fields_' . $type, FALSE);
+      $type = $node->type;
+      if (!variable_get('rc_type_' . $type, FALSE)) {
+        // Conflict handling is not enabled for this node.
+        break;
+      }
+
+      require_once(drupal_get_path('module', 'date_api') .'/date.inc');
+
+      // Find the date field to use for time overlapping_node_ids detection.
+      $date_field = variable_get('rc_date_field_' . $type, FALSE);
+
+      $overlapping_node_ids = array();
+      
+      if (strpos($date_field, 'field_', 0) === 0) {
+        // Get the start and end Date of the current node
+        $start = $node->{$date_field}[0]['value'];
+        $end   = $node->{$date_field}[0]['value2'];
         
-        // Get all overlapping events
-        $overlap = _resource_conflict_event_overlap($node->event_start, $node->event_end);
-        foreach($overlap as $nid) {
-          $overlap_nodes[] = node_load($nid);
+        // Get all conflicting Date nodes
+        if (!empty($start) && !empty($end)) {
+          $overlapping_node_ids = _resource_conflict_overlaps_from_date($start, $end);
         }
-        
-        foreach($fields as $field) {
-          foreach($node->{$field} as $instance) {
-            foreach ($overlap_nodes as $conflict) {
-              foreach($conflict->{$field} as $conflict_instance) {
-                if ($instance['nid'] == $conflict_instance['nid']) {
-                  $booked_resource = node_load($instance['nid']);
-                  form_set_error('Resource Conflict', 
-                    t('There is a resource conflict. "%resource" is currently booked. Please choose a different time or a different resource.',
-                      array('%resource' => $booked_resource->title)));
-                }
-              }
-            }
-          }
+        else {
+          // If we got here, someone broke the requirements, so turn of
+          // resource conflict for this type and notify an admin
+          _resource_conflict_disable($type);
         }
       }
+      if (!empty($node->event_start)) {
+        // Get all overlapping events
+        $tmp = _resource_conflict_overlaps_from_event($node->event_start, $node->event_end);
+        $overlapping_node_ids = array_unique(array_merge($overlapping_node_ids, $tmp));
+      }
+
+      // Load conflicting nodes
+      $conflicting_nodes = array();
+      foreach ($overlapping_node_ids as $nid) {
+        // Don't have the node conflict with itself
+        if ($nid != $node->nid) {
+          $conflicting_nodes[$nid] = node_load($nid);
+        }
+      }
+
+      // Display conflict errors
+      _resource_conflict_display_conflict_errors($node, $conflicting_nodes);
       break;
   }
 }
 
-function resource_conflict_form_alter($form_id, &$form) {
-  if ($form_id == 'node_type_form') {
-    $type = (isset($form['old_type']) && isset($form['old_type']['#value'])) ? $form['old_type']['#value'] : NULL;
-    
-    $form['resource_conflict_set'] = array(
-      '#type' => 'fieldset',
-      '#title' => t('Resource Conflict'),
-      '#collapsible' => 1,
-    );
-    
-    $form['resource_conflict_set']['resource_conflict'] = array(
-      '#type' => 'checkbox',
-      '#title' => t('Enable resource conflict checking for this content type.'),
-      '#default_value' => variable_get('resource_conflict_' . $type, 0),
-      '#description' => t('If this is enabled, this content type must also be event enabled.'),
-    );
-    
-    if ($type != NULL) {
-      $fields = content_fields();
-      
-      foreach($fields as $field) {
-        if ($field['type'] == 'nodereference') {
-          $nodereference_fields[$field['field_name']] = $field['widget']['label'];
-        }
+
+/**
+ * Compare our demand to the demand of overlapping nodes
+ * and display errors for the intersections
+ *
+ * @param $node the currently validating node
+ * @param $conflicting_nodes array of nodes that overlap with this node
+ */
+function _resource_conflict_display_conflict_errors($node, $conflicting_nodes) {
+  $our_demands = _resource_conflict_get_node_resource_demand($node);
+  foreach ($conflicting_nodes as $conflicting_node) {
+    $other_demands = _resource_conflict_get_node_resource_demand($conflicting_node);
+
+    // select the resources that both this node and the other node demands
+    $conflicting_resources = array();
+    foreach ($our_demands as $our_demand => $dummy) {
+      if ($other_demands[$our_demand]) {
+        $conflicting_resources[$our_demand] = node_load($our_demand);
       }
     }
-    
-    if (empty($nodereference_fields)) {
-      $form['resource_conflict_set']['no_nodreference_fields'] = array(
-        '#value' => t('Please create some nodereference fields for this content type.')
+
+    // display the error for each conflict
+    foreach ($conflicting_resources as $conflicting_resource) {
+      $date_field = variable_get('rc_date_field_'. $conflicting_node->type, FALSE);
+      if (strpos($date_field, 'field_', 0) === 0) {
+        $start = format_date(date_iso2unix($conflicting_node->{$date_field}[0]['value']));
+        $end   = format_date(date_iso2unix($conflicting_node->{$date_field}[0]['value2']));
+      }
+      else {
+        $start = format_date($conflicting_node->event_start);
+        $end = format_date($conflicting_node->event_end);
+      }
+      
+      $error = t('There is a resource conflict: <a href="@resource-url">%resource</a> is currently booked for <a href="@booker-url">%booker</a> from %start to %end. Please choose a different time or a different resource.',
+        array(
+          '@booker-url' => url('node/'. $conflicting_node->nid),
+          '%booker' => $conflicting_node->title,
+          '@resource-url' => url('node/'. $conflicting_resource->nid),
+          '%resource' => $conflicting_resource->title,
+          '%start' => $start,
+          '%end' => $end,
+        )
       );
-    }
-    else {
-      $form['resource_conflict_set']['resource_conflict_fields'] = array(
-        '#type' => 'select',
-        '#title' => t('Fields to check for conflicts'),
-        '#options' => $nodereference_fields,
-        '#multiple' => TRUE,
-        '#default_value' => variable_get('resource_conflict_fields_equipment_booking', FALSE),
-        '#description' => t("Select the node reference resources which can't be booked at the same time.")
-      );
+
+      // This is a bit of a hack, but there's no way with FAPI to have
+      // multiple form errors on the same field.  So, we just pass in
+      // a bogus (but unique) ID for each error message, to ensure
+      // that all conflicts are reported simultaneously.  We use the
+      // nid of the conflicting resource (thing) appended with the nid
+      // of the conflicting node (reservation event).
+      $conflict_id = $conflicting_resource->nid . '_' . $conflicting_node->nid;
+      form_set_error($conflict_id, $error);
     }
   }
 }
 
 /**
- * Determine if any events overlap the specified times
+ * Implementation of hook_form_alter
+ */
+function resource_conflict_form_alter($form_id, &$form) {
+  if ($form_id == 'node_type_form') {
+    $requirements = array();
+    
+    $type = (isset($form['old_type']) && isset($form['old_type']['#value'])) ? $form['old_type']['#value'] : NULL;
+    
+    $form['resource_conflict_set'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Resource Conflict'),
+      '#collapsible' => TRUE,
+    );
+    
+    // The user is adding a new content type
+    if ($type == NULL) {
+      $form['resource_conflict_set']['rc_info'] = array(
+        '#prefix' => '<p>',
+        '#suffix' => '</p>',
+        '#value' => t('To set up this content type for conflict checking, first event-enable the type, or add a Date CCK field with required start and end dates. Then, add at least one Node Reference field linked to the content type of items you would like to be able to book. When all of the conditions have been met, this section will be enabled for configuration.'),
+      );
+      return;
+    }
+    
+    $date_fields = array();
+    if ($type != NULL) {
+      $type_info = content_types($type);
+      $fields = $type_info['fields'];
+      
+      foreach ($fields as $field) {
+        if ($field['type'] == 'nodereference') {
+          $nodereference_fields[$field['field_name']] = $field['widget']['label'];
+        }
+        elseif ($field['type'] == 'date' && $field['todate'] == 'required' && $field['required']) {
+          $date_fields[$field['field_name']] = $field['widget']['label'];
+        }
+      }
+    }
+    
+    if (empty($nodereference_fields)) {
+      $requirements['nodereference'] = t('At least one Node Reference field must be added to this content type.');
+    }
+    
+    if (module_exists('event')) {
+      $event_enabled = (event_enabled_state($type) == "all" || event_enabled_state($type) == "solo");
+    }
+    else {
+      $event_enabled = FALSE;
+    }
+      
+    // If we are event enabled, allow the selection of the Event field.
+    if ($event_enabled) {
+      $date_fields += array('event' => t('Use Event Field from the Event Module'));
+    }
+    
+    if (empty($date_fields) && !$event_enabled) {
+      if (module_exists('event')) {
+        $requirements['event'] = t('This content type is not event enabled. Please event-enable this content type if you wish to use Resource Conflict with the Event module.');
+      }
+      else {
+        $requirements['event'] = t('This content type is not event enabled. Please install the Event module if you wish to use Resource Conflict with the Event module.');
+      }
+        
+      $requirements['date_api'] = t('This content type does not contain any suitable Date fields. Please add at least one Date field with required start and end dates if you wish to use Resource Conflict with the Date module.');
+    }
+    
+    if (!empty($requirements)) {
+      _resource_conflict_disable($type, TRUE);
+      
+      $form['resource_conflict_set']['requirements'] = array(
+        '#prefix' => '<p>' . t('The following requirements for Resource Conflict have not been met:') . '</p><ol>',
+        '#suffix' => '</ol>',
+        '#weight' => -10,
+      );
+      foreach ($requirements as $component => $error) {
+        $form['resource_conflict_set']['requirements'][$component] = array(
+          '#prefix' => '<li>',
+          '#suffix' => '</li>',
+          '#value' => $error,
+        );
+      }
+    }
+    else {
+      $form['resource_conflict_set']['rc_type'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Enable resource conflict checking for this content type'),
+        '#default_value' => variable_get('rc_type_' . $type, 0),
+        '#weight' => -8,
+      );
+      
+      $form['resource_conflict_set']['rc_date_field'] = array(
+        '#type' => 'select',
+        '#title' => t('Field to use as the date for conflict checks'),
+        '#options' => $date_fields,
+        '#multiple' => FALSE,
+        '#default_value' => variable_get('rc_date_field_' . $type, FALSE),
+        '#description' => t("Select the date field to use to check for resource conflicts."),
+      );
+      
+      $form['resource_conflict_set']['rc_reference_fields'] = array(
+        '#type' => 'checkboxes',
+        '#title' => t('Fields to check for conflicts'),
+        '#options' => $nodereference_fields,
+        '#default_value' => variable_get('rc_reference_fields_'.$type, FALSE),
+        '#description' => t("Select the resources which can't be booked at the same time."),
+      );
+    }
+    
+    //set custom validation and submit callbacks
+    $form['#validate']['resource_conflict_form_validate'] = array();
+    $form['#submit']['resource_conflict_form_submit'] = array();
+  }
+}
+
+/**
+ * Validate the node_type_form
+ */
+function resource_conflict_form_validate($form_id, $form_values) {
+  if ($form_id == 'node_type_form') {
+    if ($form_values['rc_type']) {
+      $resource_selected = FALSE;
+      foreach ($form_values['rc_reference_fields'] as $field) {
+        if ($field) {
+          $resource_selected = TRUE;
+          break;
+        }
+      }
+      if (!$resource_selected) {
+        form_set_error('rc_reference_fields', t("At least one resource field must be set if conflict handling is enabled."));
+      }
+    }
+  }
+}
+
+/**
+ * Submit the node_type_form
+ */
+function resource_conflict_form_submit($form_id, $form_values) {
+  $type = $form_values['type'];
+  $old_type = $form_values['old_type'];
+  $conflict_types = variable_get("rc_types", array());
+
+  //unset old entry
+  if (!empty($old_type)) {
+    $key = array_search($old_type, $conflict_types);
+    unset($conflict_types[$key]);
+  }
+  
+  //make new entry if this type is conflict handled
+  if ($form_values['rc_type']) {
+    $conflict_types[] = $type;
+  }
+
+  variable_set("rc_types", $conflict_types);
+}
+
+/**
+ * Get the conflict enabled types
+ *
+ * @return
+ *   An array of type names
+ */
+function _resource_conflict_get_conflict_enabled_types() {
+  $conflict_types = variable_get("rc_types", array());
+  return $conflict_types;
+}
+
+/**
+ * Get a conflict enabled node's resource demand
+ *
+ * @param $node
+ *   The node which resurce demand will be returned
+ * @return
+ *   An array with keys of the node ID's, values of true
+ */
+function _resource_conflict_get_node_resource_demand($node) {
+  $type = $node->type;
+  $reference_fields = variable_get('rc_reference_fields_' . $type, array());
+
+  $demand = array();
+  foreach ($reference_fields as $reference_field) {
+    $references = $node-> {$reference_field};
+    foreach ($references as $reference) {
+      /**
+       * Check to see if any referencable resources exist. If they don't, file
+       * an error. This only matters when the nodereference field is set to
+       * required, otherwise this code doesn't get called at all. We have to
+       * file the error against the fake 'no_resources' element as CCK files
+       * it's own "Illegal choice" error before we get called.
+       */
+      if (is_array($reference['nid'])) {
+        form_set_error('no_resources', t('No bookable resources have been created. Please create resources to book before attempting to create a resource booking.'));
+      }
+      else {
+        $demand[$reference['nid']] = TRUE;
+      }
+    }
+  }
+  return $demand;
+}
+
+/**
+ * Determine if any nodes conflict between the specified dates using Date API.
+ *
+ * @param $date_start
+ *   The start date of the date to check
+ * @param $date_end
+ *   The end date of the date to check.
+ * @return
+ *   An array of node ID's
+ */
+function _resource_conflict_overlaps_from_date($date_start, $date_end) {
+  $start = date_make_date($date_start, 'GMT', 'db', DATE_ISO);
+  $end = date_make_date($date_end, 'GMT', 'db', DATE_ISO);
+  return _resource_conflict_get_overlaps($start, $end);
+}
+
+/**
+ * Determine if any nodes conflict between the specified dates using Event.
+ *
+ * @param $event_start
+ *   The start date of the event to check
+ * @param $event_end
+ *   The end date of the event to check.
+ * @return
+ *   An array of node ID's
+ */
+function _resource_conflict_overlaps_from_event($event_start, $event_end) {
+  $start = date_make_date($event_start, 'GMT', 'db', DATE_UNIX);
+  $end = date_make_date($event_end, 'GMT', 'db', DATE_UNIX);
+  return _resource_conflict_get_overlaps($start, $end);
+}
+
+/**
+ * Determine if any conflict enabled nodes overlap the specified times
  *
  * 1. $start is within the event time
  * 2. $end end is within the event time
  * 3. The event encompasses $start and $end
- * 4. The event is encompassed by $start and $end
- * 5. Allow the end of one event to occur at the start of the next
+ * 4. Allow the end of one event to occur at the start of the next
  * 
- * @param unknown_type $start
- * @param unknown_type $end
- * @return An array of node ID's
+ * @param $start
+ *   The start time of events to search as dateAPI object
+ * @param $end
+ *   The end time of events to search as dateAPI object
+ * @return
+ *   An array of node ID's
  */
-function _resource_conflict_event_overlap($start, $end) {
-//  print variable_get('date_default_timezone', 0) . '<br>';
-//  $start += variable_get('date_default_timezone', 0);
-//  $end += variable_get('date_default_timezone', 0);
-//  print $start . '<br>';
-  $query = "SELECT nid FROM {event} WHERE (event_start <= %d AND %d < event_end)
-    OR (event_start <= %d AND %d < event_end)
-    OR (event_start > %d AND event_end < %d)";
-  $result = db_query($query, $start, $start, $end, $end, $start, $end);
-  return db_fetch_array($result);
+function _resource_conflict_get_overlaps($start, $end) {
+  $date_start = date_show_value($start, 'db', DATE_ISO);
+  $date_end = date_show_value($end, 'db', DATE_ISO);
+  $event_start = date_show_value($start, 'db', DATE_UNIX);
+  $event_end = date_show_value($end, 'db', DATE_UNIX);
+
+  $rows = array();
+  $conflict_types = _resource_conflict_get_conflict_enabled_types();
+
+  foreach ($conflict_types as $type) {
+    $date_field = variable_get('rc_date_field_' . $type, FALSE);
+
+    if(strpos($date_field, 'field_', 0) === 0) {      
+      $date_db_info = content_database_info(content_fields($date_field));
+      $date_table = '{' . $date_db_info['table'] . '}';
+      
+      $start_field_name = $date_db_info['columns']['value']['column'];
+      $end_field_name = $date_db_info['columns']['value2']['column'];
+      
+      $query = "SELECT DISTINCT nid FROM $date_table
+        WHERE('%s' >= $start_field_name AND '%s' < $end_field_name)
+        OR('%s' > $start_field_name AND '%s' <= $end_field_name)
+        OR('%s' <= $start_field_name AND '%s' >= $end_field_name)";
+      
+      $result = db_query($query, $date_start, $date_start, $date_end, $date_end, $date_start, $date_end);
+
+      // Create an array of all of the results
+      while ($row = db_fetch_array($result)) {
+        $rows[] = $row['nid'];
+      }
+    }
+    elseif ($date_field == 'event') { //event enabled
+      $query = "SELECT DISTINCT nid FROM {event} WHERE (%d >= event_start AND %d < event_end)
+        OR (%d > event_start AND %d <= event_end)
+        OR (%d <= event_start AND %d >= event_end)";
+      $result = db_query($query, $event_start, $event_start, $event_end, $event_end, $event_start, $event_end);
+      
+      // Create an array of all of the results
+      while($row = db_fetch_array($result)) {
+        $rows[] = $row['nid'];
+      }
+    }
+  }
+  return array_unique($rows);
+}
+
+/**
+ * Disable resource conflict for a type, optionally notifying the user. A
+ * message is always logged in the Drupal log. If the content type is not
+ * conflict-enabled, nothing is changed.
+ * 
+ * @param $type
+ *  The content type to disable.
+ *  
+ * @param $display
+ *   If TRUE, display the message with drupal_set_message().
+ */
+function _resource_conflict_disable($type, $display = FALSE) {
+  // If the requirements are no longer met, disable resource checking and
+  // alert the site administrator.
+  if (variable_get('rc_type_' . $type, FALSE)) {
+    variable_del('rc_type_'. $type);
+    $msg = t('Resource Conflict has been disabled for the %type content type as the requirements for it are no longer met.', array('%type' => $type));
+    
+    if ($display) {
+      drupal_set_message($msg, 'Resource Conflict');
+    }
+    watchdog('Resource Conflict', $msg, WATCHDOG_WARNING);
+  }
 }
