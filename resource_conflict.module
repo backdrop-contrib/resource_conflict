@@ -16,7 +16,7 @@ function resource_conflict_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
         break;
       }
 
-      require_once(drupal_get_path('module', 'date_api') .'/date.inc');
+      module_load_include('inc', 'date_api', 'date');
 
       // Find the date field to use for time overlapping_node_ids detection.
       $date_field = variable_get('rc_date_field_' . $type, FALSE);
@@ -118,7 +118,7 @@ function _resource_conflict_display_conflict_errors($node, $conflicting_nodes) {
 /**
  * Implementation of hook_form_alter
  */
-function resource_conflict_form_alter($form_id, &$form) {
+function resource_conflict_form_alter(&$form, &$form_state, $form_id) {
   if ($form_id == 'node_type_form') {
     $requirements = array();
     
@@ -225,19 +225,19 @@ function resource_conflict_form_alter($form_id, &$form) {
     }
     
     //set custom validation and submit callbacks
-    $form['#validate']['resource_conflict_form_validate'] = array();
-    $form['#submit']['resource_conflict_form_submit'] = array();
+    $form['#validate'][] = 'resource_conflict_form_validate';
+    $form['#submit'][] = 'resource_conflict_form_submit';
   }
 }
 
 /**
  * Validate the node_type_form
  */
-function resource_conflict_form_validate($form_id, $form_values) {
-  if ($form_id == 'node_type_form') {
-    if ($form_values['rc_type']) {
+function resource_conflict_form_validate($form, &$form_state) {
+  if ($form_state['values']['form_id'] == 'node_type_form') {
+    if ($form_state['values']['rc_type']) {
       $resource_selected = FALSE;
-      foreach ($form_values['rc_reference_fields'] as $field) {
+      foreach ($form_state['values']['rc_reference_fields'] as $field) {
         if ($field) {
           $resource_selected = TRUE;
           break;
@@ -253,9 +253,9 @@ function resource_conflict_form_validate($form_id, $form_values) {
 /**
  * Submit the node_type_form
  */
-function resource_conflict_form_submit($form_id, $form_values) {
-  $type = $form_values['type'];
-  $old_type = $form_values['old_type'];
+function resource_conflict_form_submit($form, &$form_state) {
+  $type = $form_state['values']['type'];
+  $old_type = $form_state['values']['old_type'];
   $conflict_types = variable_get("rc_types", array());
 
   //unset old entry
@@ -265,7 +265,7 @@ function resource_conflict_form_submit($form_id, $form_values) {
   }
   
   //make new entry if this type is conflict handled
-  if ($form_values['rc_type']) {
+  if ($form_state['values']['rc_type']) {
     $conflict_types[] = $type;
   }
 
@@ -432,5 +432,23 @@ function _resource_conflict_disable($type, $display = FALSE) {
       drupal_set_message($msg, 'Resource Conflict');
     }
     watchdog('Resource Conflict', $msg, WATCHDOG_WARNING);
+  }
+}
+
+/**
+ *  A function to display the database value for the date object
+ *
+ *  @param $date - the date object
+ *  @param $format - DATE_UNIX or DATE_ISO, the type of value to display
+ *  @param $type - 'db' or 'local', the date value to display
+ */
+if (!function_exists('date_show_value')) {
+  function date_show_value($date, $type = 'db', $format = DATE_ISO) {
+    if ($format == DATE_UNIX) {
+      return $date->$type->timestamp;
+    }
+    else {
+      return $date->$type->iso;
+    }
   }
 }

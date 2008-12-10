@@ -1,4 +1,7 @@
 name = Resource Conflict
 description = Provides a mechanism for notifying of conflict based on nodereferenced resources.
-dependencies = nodereference date_api content
+dependencies[] = nodereference
+dependencies[] = date_api
+dependencies[] = content
 project = "resource_conflict"
+core = 6.x
