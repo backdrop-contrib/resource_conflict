@@ -429,7 +429,7 @@ function _resource_conflict_disable($type, $display = FALSE) {
     if ($display) {
       drupal_set_message($msg, 'Resource Conflict');
     }
-    watchdog('Resource Conflict', $msg, WATCHDOG_WARNING);
+    watchdog('rsrc conflict', $msg, WATCHDOG_WARNING);
   }
 }
 
