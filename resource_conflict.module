@@ -16,8 +16,6 @@ function resource_conflict_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
         break;
       }
 
-      module_load_include('inc', 'date_api', 'date');
-
       // Find the date field to use for time overlapping_node_ids detection.
       $date_field = variable_get('rc_date_field_' . $type, FALSE);
 
@@ -33,7 +31,7 @@ function resource_conflict_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
           $overlapping_node_ids = _resource_conflict_overlaps_from_date($start, $end);
         }
         else {
-          // If we got here, someone broke the requirements, so turn of
+          // If we got here, someone broke the requirements, so turn off
           // resource conflict for this type and notify an admin
           _resource_conflict_disable($type);
         }
@@ -75,7 +73,7 @@ function _resource_conflict_display_conflict_errors($node, $conflicting_nodes) {
     // select the resources that both this node and the other node demands
     $conflicting_resources = array();
     foreach ($our_demands as $our_demand => $dummy) {
-      if ($other_demands[$our_demand]) {
+      if (isset($other_demands[$our_demand])) {
         $conflicting_resources[$our_demand] = node_load($our_demand);
       }
     }
@@ -84,8 +82,8 @@ function _resource_conflict_display_conflict_errors($node, $conflicting_nodes) {
     foreach ($conflicting_resources as $conflicting_resource) {
       $date_field = variable_get('rc_date_field_'. $conflicting_node->type, FALSE);
       if (strpos($date_field, 'field_', 0) === 0) {
-        $start = format_date(date_iso2unix($conflicting_node->{$date_field}[0]['value']));
-        $end   = format_date(date_iso2unix($conflicting_node->{$date_field}[0]['value2']));
+        $start = format_date(date_convert($conflicting_node->{$date_field}[0]['value'], DATE_ISO, DATE_UNIX));
+        $end   = format_date(date_convert($conflicting_node->{$date_field}[0]['value2'], DATE_ISO, DATE_UNIX));
       }
       else {
         $start = format_date($conflicting_node->event_start);
@@ -118,7 +116,7 @@ function _resource_conflict_display_conflict_errors($node, $conflicting_nodes) {
 /**
  * Implementation of hook_form_alter
  */
-function resource_conflict_form_alter(&$form, &$form_state, $form_id) {
+function resource_conflict_form_alter(&$form, $form_state, $form_id) {
   if ($form_id == 'node_type_form') {
     $requirements = array();
     
@@ -219,7 +217,7 @@ function resource_conflict_form_alter(&$form, &$form_state, $form_id) {
         '#type' => 'checkboxes',
         '#title' => t('Fields to check for conflicts'),
         '#options' => $nodereference_fields,
-        '#default_value' => variable_get('rc_reference_fields_'.$type, FALSE),
+        '#default_value' => variable_get('rc_reference_fields_' . $type, array()),
         '#description' => t("Select the resources which can't be booked at the same time."),
       );
     }
@@ -297,7 +295,7 @@ function _resource_conflict_get_node_resource_demand($node) {
 
   $demand = array();
   foreach ($reference_fields as $reference_field) {
-    $references = $node-> {$reference_field};
+    $references = $node->{$reference_field};
     foreach ($references as $reference) {
       /**
        * Check to see if any referencable resources exist. If they don't, file
@@ -309,7 +307,7 @@ function _resource_conflict_get_node_resource_demand($node) {
       if (is_array($reference['nid'])) {
         form_set_error('no_resources', t('No bookable resources have been created. Please create resources to book before attempting to create a resource booking.'));
       }
-      else {
+      else if (is_numeric($reference['nid'])){
         $demand[$reference['nid']] = TRUE;
       }
     }
@@ -328,8 +326,8 @@ function _resource_conflict_get_node_resource_demand($node) {
  *   An array of node ID's
  */
 function _resource_conflict_overlaps_from_date($date_start, $date_end) {
-  $start = date_make_date($date_start, 'GMT', 'db', DATE_ISO);
-  $end = date_make_date($date_end, 'GMT', 'db', DATE_ISO);
+  $start = date_make_date($date_start, 'GMT', DATE_ISO);
+  $end = date_make_date($date_end, 'GMT', DATE_ISO);
   return _resource_conflict_get_overlaps($start, $end);
 }
 
@@ -344,8 +342,8 @@ function _resource_conflict_overlaps_from_date($date_start, $date_end) {
  *   An array of node ID's
  */
 function _resource_conflict_overlaps_from_event($event_start, $event_end) {
-  $start = date_make_date($event_start, 'GMT', 'db', DATE_UNIX);
-  $end = date_make_date($event_end, 'GMT', 'db', DATE_UNIX);
+  $start = date_make_date($event_start, 'GMT', DATE_UNIX);
+  $end = date_make_date($event_end, 'GMT', DATE_UNIX);
   return _resource_conflict_get_overlaps($start, $end);
 }
 
@@ -365,10 +363,10 @@ function _resource_conflict_overlaps_from_event($event_start, $event_end) {
  *   An array of node ID's
  */
 function _resource_conflict_get_overlaps($start, $end) {
-  $date_start = date_show_value($start, 'db', DATE_ISO);
-  $date_end = date_show_value($end, 'db', DATE_ISO);
-  $event_start = date_show_value($start, 'db', DATE_UNIX);
-  $event_end = date_show_value($end, 'db', DATE_UNIX);
+  $date_start = date_convert($start, DATE_OBJECT, DATE_ISO);
+  $date_end = date_convert($end, DATE_OBJECT, DATE_ISO);
+  $event_start = date_convert($start, DATE_OBJECT, DATE_UNIX);
+  $event_end = date_convert($end, DATE_OBJECT, DATE_UNIX);
 
   $rows = array();
   $conflict_types = _resource_conflict_get_conflict_enabled_types();
@@ -376,7 +374,7 @@ function _resource_conflict_get_overlaps($start, $end) {
   foreach ($conflict_types as $type) {
     $date_field = variable_get('rc_date_field_' . $type, FALSE);
 
-    if(strpos($date_field, 'field_', 0) === 0) {      
+    if(strpos($date_field, 'field_', 0) === 0) {
       $date_db_info = content_database_info(content_fields($date_field));
       $date_table = '{' . $date_db_info['table'] . '}';
       
