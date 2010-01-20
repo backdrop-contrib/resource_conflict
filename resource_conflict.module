@@ -147,7 +147,7 @@ function resource_conflict_form_alter(&$form, $form_state, $form_id) {
         if ($field['type'] == 'nodereference') {
           $nodereference_fields[$field['field_name']] = $field['widget']['label'];
         }
-        elseif ($field['type'] == 'date' && $field['todate'] == 'required' && $field['required']) {
+        elseif (($field['type'] == 'date' || $field['type'] == 'datetime') && $field['todate'] == 'required' && $field['required']) {
           $date_fields[$field['field_name']] = $field['widget']['label'];
         }
       }
@@ -326,8 +326,15 @@ function _resource_conflict_get_node_resource_demand($node) {
  *   An array of node ID's
  */
 function _resource_conflict_overlaps_from_date($date_start, $date_end) {
-  $start = date_make_date($date_start, 'GMT', DATE_ISO);
-  $end = date_make_date($date_end, 'GMT', DATE_ISO);
+  // Make the default type to DATE_ISO.
+  $type = DATE_ISO;
+  // If date_start is not in DATE_ISO set the type to DATE_DATETIME.
+  if (!date_is_valid($date_start,DATE_ISO)) {
+    $type = DATE_DATETIME;
+  }
+
+  $start = date_make_date($date_start, 'GMT', $type);
+  $end = date_make_date($date_end, 'GMT', $type);
   return _resource_conflict_get_overlaps($start, $end);
 }
 
