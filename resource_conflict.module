@@ -20,12 +20,12 @@ function resource_conflict_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
       $date_field = variable_get('rc_date_field_' . $type, FALSE);
 
       $overlapping_node_ids = array();
-      
+
       if (strpos($date_field, 'field_', 0) === 0) {
         // Get the start and end Date of the current node
         $start = $node->{$date_field}[0]['value'];
         $end   = $node->{$date_field}[0]['value2'];
-        
+
         // Get all conflicting Date nodes
         if (!empty($start) && !empty($end)) {
           $overlapping_node_ids = _resource_conflict_overlaps_from_date($start, $end);
@@ -82,14 +82,20 @@ function _resource_conflict_display_conflict_errors($node, $conflicting_nodes) {
     foreach ($conflicting_resources as $conflicting_resource) {
       $date_field = variable_get('rc_date_field_'. $conflicting_node->type, FALSE);
       if (strpos($date_field, 'field_', 0) === 0) {
-        $start = format_date(date_convert($conflicting_node->{$date_field}[0]['value'], DATE_ISO, DATE_UNIX));
-        $end   = format_date(date_convert($conflicting_node->{$date_field}[0]['value2'], DATE_ISO, DATE_UNIX));
+        $type = DATE_ISO;
+        // If date_start is not in DATE_ISO set the type to DATE_DATETIME.
+        if (!date_is_valid($date_start,DATE_ISO)) {
+          $type = DATE_DATETIME;
+        }
+
+        $start = format_date(date_convert($conflicting_node->{$date_field}[0]['value'], $type, DATE_UNIX));
+        $end   = format_date(date_convert($conflicting_node->{$date_field}[0]['value2'], $type, DATE_UNIX));
       }
       else {
         $start = format_date($conflicting_node->event_start);
         $end = format_date($conflicting_node->event_end);
       }
-      
+
       $error = t('There is a resource conflict: <a href="@resource-url">%resource</a> is currently booked for <a href="@booker-url">%booker</a> from %start to %end. Please choose a different time or a different resource.',
         array(
           '@booker-url' => url('node/'. $conflicting_node->nid),
@@ -119,15 +125,15 @@ function _resource_conflict_display_conflict_errors($node, $conflicting_nodes) {
 function resource_conflict_form_alter(&$form, $form_state, $form_id) {
   if ($form_id == 'node_type_form') {
     $requirements = array();
-    
+
     $type = (isset($form['old_type']) && isset($form['old_type']['#value'])) ? $form['old_type']['#value'] : NULL;
-    
+
     $form['resource_conflict_set'] = array(
       '#type' => 'fieldset',
       '#title' => t('Resource Conflict'),
       '#collapsible' => TRUE,
     );
-    
+
     // The user is adding a new content type
     if ($type == NULL) {
       $form['resource_conflict_set']['rc_info'] = array(
@@ -137,12 +143,12 @@ function resource_conflict_form_alter(&$form, $form_state, $form_id) {
       );
       return;
     }
-    
+
     $date_fields = array();
     if ($type != NULL) {
       $type_info = content_types($type);
       $fields = $type_info['fields'];
-      
+
       foreach ($fields as $field) {
         if ($field['type'] == 'nodereference') {
           $nodereference_fields[$field['field_name']] = $field['widget']['label'];
@@ -152,23 +158,23 @@ function resource_conflict_form_alter(&$form, $form_state, $form_id) {
         }
       }
     }
-    
+
     if (empty($nodereference_fields)) {
       $requirements['nodereference'] = t('At least one Node Reference field must be added to this content type.');
     }
-    
+
     if (module_exists('event')) {
       $event_enabled = (event_enabled_state($type) == "all" || event_enabled_state($type) == "solo");
     }
     else {
       $event_enabled = FALSE;
     }
-      
+
     // If we are event enabled, allow the selection of the Event field.
     if ($event_enabled) {
       $date_fields += array('event' => t('Use Event Field from the Event Module'));
     }
-    
+
     if (empty($date_fields) && !$event_enabled) {
       if (module_exists('event')) {
         $requirements['event'] = t('This content type is not event enabled. Please event-enable this content type if you wish to use Resource Conflict with the Event module.');
@@ -176,13 +182,13 @@ function resource_conflict_form_alter(&$form, $form_state, $form_id) {
       else {
         $requirements['event'] = t('This content type is not event enabled. Please install the Event module if you wish to use Resource Conflict with the Event module.');
       }
-        
+
       $requirements['date_api'] = t('This content type does not contain any suitable Date fields. Please add at least one Date field with required start and end dates if you wish to use Resource Conflict with the Date module.');
     }
-    
+
     if (!empty($requirements)) {
       _resource_conflict_disable($type, TRUE);
-      
+
       $form['resource_conflict_set']['requirements'] = array(
         '#prefix' => '<p>' . t('The following requirements for Resource Conflict have not been met:') . '</p><ol>',
         '#suffix' => '</ol>',
@@ -203,7 +209,7 @@ function resource_conflict_form_alter(&$form, $form_state, $form_id) {
         '#default_value' => variable_get('rc_type_' . $type, 0),
         '#weight' => -8,
       );
-      
+
       $form['resource_conflict_set']['rc_date_field'] = array(
         '#type' => 'select',
         '#title' => t('Field to use as the date for conflict checks'),
@@ -212,7 +218,7 @@ function resource_conflict_form_alter(&$form, $form_state, $form_id) {
         '#default_value' => variable_get('rc_date_field_' . $type, FALSE),
         '#description' => t("Select the date field to use to check for resource conflicts."),
       );
-      
+
       $form['resource_conflict_set']['rc_reference_fields'] = array(
         '#type' => 'checkboxes',
         '#title' => t('Fields to check for conflicts'),
@@ -221,7 +227,7 @@ function resource_conflict_form_alter(&$form, $form_state, $form_id) {
         '#description' => t("Select the resources which can't be booked at the same time."),
       );
     }
-    
+
     //set custom validation and submit callbacks
     $form['#validate'][] = 'resource_conflict_form_validate';
     $form['#submit'][] = 'resource_conflict_form_submit';
@@ -261,7 +267,7 @@ function resource_conflict_form_submit($form, &$form_state) {
     $key = array_search($old_type, $conflict_types);
     unset($conflict_types[$key]);
   }
-  
+
   //make new entry if this type is conflict handled
   if ($form_state['values']['rc_type']) {
     $conflict_types[] = $type;
@@ -384,15 +390,15 @@ function _resource_conflict_get_overlaps($start, $end) {
     if(strpos($date_field, 'field_', 0) === 0) {
       $date_db_info = content_database_info(content_fields($date_field));
       $date_table = '{' . $date_db_info['table'] . '}';
-      
+
       $start_field_name = $date_db_info['columns']['value']['column'];
       $end_field_name = $date_db_info['columns']['value2']['column'];
-      
+
       $query = "SELECT DISTINCT {node}.nid FROM {node} INNER JOIN $date_table date_table ON {node}.vid = date_table.vid
         WHERE('%s' >= date_table.$start_field_name AND '%s' < date_table.$end_field_name)
         OR('%s' > date_table.$start_field_name AND '%s' <= date_table.$end_field_name)
         OR('%s' <= date_table.$start_field_name AND '%s' >= date_table.$end_field_name)";
-      
+
       $result = db_query($query, $date_start, $date_start, $date_end, $date_end, $date_start, $date_end);
 
       // Create an array of all of the results
@@ -405,7 +411,7 @@ function _resource_conflict_get_overlaps($start, $end) {
         OR (%d > event_start AND %d <= event_end)
         OR (%d <= event_start AND %d >= event_end)";
       $result = db_query($query, $event_start, $event_start, $event_end, $event_end, $event_start, $event_end);
-      
+
       // Create an array of all of the results
       while($row = db_fetch_array($result)) {
         $rows[] = $row['nid'];
@@ -432,7 +438,7 @@ function _resource_conflict_disable($type, $display = FALSE) {
   if (variable_get('rc_type_' . $type, FALSE)) {
     variable_del('rc_type_'. $type);
     $msg = t('Resource Conflict has been disabled for the %type content type as the requirements for it are no longer met.', array('%type' => $type));
-    
+
     if ($display) {
       drupal_set_message($msg, 'Resource Conflict');
     }
@@ -457,3 +463,4 @@ if (!function_exists('date_show_value')) {
     }
   }
 }
+
