@@ -388,10 +388,10 @@ function _resource_conflict_get_overlaps($start, $end) {
       $start_field_name = $date_db_info['columns']['value']['column'];
       $end_field_name = $date_db_info['columns']['value2']['column'];
       
-      $query = "SELECT DISTINCT nid FROM $date_table
-        WHERE('%s' >= $start_field_name AND '%s' < $end_field_name)
-        OR('%s' > $start_field_name AND '%s' <= $end_field_name)
-        OR('%s' <= $start_field_name AND '%s' >= $end_field_name)";
+      $query = "SELECT DISTINCT {node}.nid FROM {node} INNER JOIN $date_table date_table ON {node}.vid = date_table.vid
+        WHERE('%s' >= date_table.$start_field_name AND '%s' < date_table.$end_field_name)
+        OR('%s' > date_table.$start_field_name AND '%s' <= date_table.$end_field_name)
+        OR('%s' <= date_table.$start_field_name AND '%s' >= date_table.$end_field_name)";
       
       $result = db_query($query, $date_start, $date_start, $date_end, $date_end, $date_start, $date_end);
 
