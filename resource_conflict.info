@@ -1,7 +1,14 @@
 name = Resource Conflict
-description = Provides a mechanism for notifying of conflict based on nodereferenced resources.
-dependencies[] = nodereference
+description = Provides a mechanism for notifying of conflict based on entries in a Date field
+dependencies[] = entity
+dependencies[] = entityreference
+dependencies[] = rules
+dependencies[] = date
 dependencies[] = date_api
-dependencies[] = content
 project = "resource_conflict"
-core = 6.x
+; Information added by drupal.org packaging script on 2011-05-03
+version = "7.x-2.x-dev"
+core = "7.x"
+project = "resource_conflict"
+datestamp = "1304382106"
+
