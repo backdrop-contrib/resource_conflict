@@ -35,7 +35,7 @@ function resource_conflict_check_node($node) {
   foreach ($overlapping_node_ids as $nid) {
     // Don't have the node conflict with itself
     if ($nid != $node->nid) {
-      $conflicting_nodes[$nid] = node_load($nid);
+      $conflicting_nodes[] = node_load($nid);
     }
   }
   // Fire Rules action for each conflict detected
@@ -53,7 +53,7 @@ function resource_conflict_check_node($node) {
  * Automatically check nodes upon submission
  */
 function resource_conflict_node_validate($node, $form) {
-  resource_conflict_check_node($node);
+  //resource_conflict_check_node($node);
 }
 
 
@@ -61,16 +61,22 @@ function resource_conflict_node_validate($node, $form) {
  * Rules Condition: check a node object for conflicts.
  */
 function resource_conflict_contains_conflict($node) {
-  $type = $node->type;
-  if (!variable_get('rc_type_' . $type, FALSE)) {
-    // Conflict handling is not enabled for this node.
-    return FALSE;
-  }
   $conflicting_nodes = resource_conflict_check_node($node);
   if (!$conflicting_nodes) {
     return FALSE;
   }
-  return $conflicting_nodes;
+  return TRUE;
+}
+
+/**
+ * Rules Action: load list of conflicting nodes, if any
+ */
+function resource_conflict_load_conflict_list($node) {
+  $conflict_list = resource_conflict_check_node($node);
+  if (!$conflict_list) {
+    return FALSE;
+  }
+  return array('conflict_list' => $conflict_list);
 }
 
 /**

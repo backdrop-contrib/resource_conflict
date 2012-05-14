@@ -44,3 +44,29 @@ function resource_conflict_rules_condition_info() {
   );
 }
 
+
+/** 
+ * Implementation of hook_rules_action_info()
+ * Provides a Rules action for "load list of conflicting nodes"
+ */
+function resource_conflict_rules_action_info() {
+  return array(
+    'resource_conflict_load_conflict_list' => array(
+      'group' => t('Resource Conflict'),
+      'label' => t('Load a list of conflicting nodes'),
+      'module' => 'resource_conflict',
+      'parameter' => array(
+        'node' => array(
+          'type' => 'node',
+          'label' => t('node to check for conflicts'),
+        ),
+      ),
+      'provides' => array(
+        'conflict_list' => array(
+          'type' => 'list<node>',
+          'label' => t('Conflict List'),
+        ),
+      ),
+    ),
+  );
+}
