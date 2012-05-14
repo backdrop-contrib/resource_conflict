@@ -1,7 +1,8 @@
 <?php
 /**
  * Implementation of hook_rules_event_info()
- * @ingroup rules
+ * Provides a Rules event for "Resource Conflict Detected"
+ * Fires during node form validation
  */
 function resource_conflict_rules_event_info() {
   return array(
@@ -23,4 +24,23 @@ function resource_conflict_rules_event_info() {
   );
 }
 
+/** 
+ * Implementation of hook_rules_condition_info()
+ * Provides a Rules condition for "contains a resource conflict"
+ */
+function resource_conflict_rules_condition_info() {
+  return array(
+    'resource_conflict_contains_conflict' => array(
+      'group' => t('Resource Conflict'),
+      'label' => t('Contains a resource conflict'),
+      'module' => 'resource_conflict',
+      'parameter' => array(
+        'node' => array(
+          'type' => 'node',
+          'label' => t('Node'),
+        )
+      ),
+    ),
+  );
+}
 

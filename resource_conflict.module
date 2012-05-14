@@ -1,13 +1,13 @@
 <?php
 
-/**
- * Implements hook_node_validate().
+/** 
+ * Check a node for conflicts
  */
-function resource_conflict_node_validate($node, $form) {
+function resource_conflict_check_node($node) {
+  // Check the content type to make sure conflict handling is enabled.
   $type = $node->type;
   if (!variable_get('rc_type_' . $type, FALSE)) {
     // Conflict handling is not enabled for this node.
-    drupal_set_message(t('conflict handling not enabled'));
     return;
   }
 
@@ -25,9 +25,8 @@ function resource_conflict_node_validate($node, $form) {
       $overlapping_node_ids = _resource_conflict_overlaps_from_date($start, $end);
     }
     else {
-      // If we got here, someone broke the requirements, so turn off
-      // resource conflict for this type and notify an admin
-      _resource_conflict_disable($type);
+      // If we got here, someone broke the requirements, so log the problem and move on
+      watchdog('resource_conflict', 'Conflict checking is enabled for Content type %type, but no date field has been selected for conflict checking.', array('%type' => $type), 'WATCHDOG_ERROR');
     }
   }
 
@@ -43,6 +42,35 @@ function resource_conflict_node_validate($node, $form) {
   foreach ($conflicting_nodes as $conflicting_node) {
     rules_invoke_event('resource_conflict_conflict_detected', $node, $conflicting_node);
   }
+  if (!$conflicting_nodes) {
+    return FALSE;
+  }
+  return $conflicting_nodes;
+}
+
+/**
+ * Implements hook_node_validate().
+ * Automatically check nodes upon submission
+ */
+function resource_conflict_node_validate($node, $form) {
+  resource_conflict_check_node($node);
+}
+
+
+/**
+ * Rules Condition: check a node object for conflicts.
+ */
+function resource_conflict_contains_conflict($node) {
+  $type = $node->type;
+  if (!variable_get('rc_type_' . $type, FALSE)) {
+    // Conflict handling is not enabled for this node.
+    return FALSE;
+  }
+  $conflicting_nodes = resource_conflict_check_node($node);
+  if (!$conflicting_nodes) {
+    return FALSE;
+  }
+  return $conflicting_nodes;
 }
 
 /**
