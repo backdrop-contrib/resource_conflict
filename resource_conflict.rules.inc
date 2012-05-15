@@ -68,5 +68,16 @@ function resource_conflict_rules_action_info() {
         ),
       ),
     ),
+    'resource_conflict_form_error' => array(
+      'group' => t('Resource Conflict'),
+      'label' => t('Set a form validation error'),
+      'module' => 'resource_conflict',
+      'parameter' => array(
+        'message' => array(
+          'type' => 'text',
+          'label' => t('Message to display'),
+        ),
+      ),
+    ),
   );
 }
