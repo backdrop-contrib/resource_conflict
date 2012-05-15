@@ -11,15 +11,30 @@
 function resource_conflict_default_rules_configuration() {
   $rules = array();
 
-  // Add a reaction rule to display a warning message if conflicts detected
-  $rule = rules_reaction_rule();
-
-  $rule->label = 'Display resource conflict message';
-  $rule->active = TRUE;
-  $rule->event('resource_conflict_conflict_detected')
-    ->action('drupal_message', array('message' => 'Conflict detected between [node:title] and [conflict-node:title]'));
-    
-  $rules['display_resource_conflict_message'] = $rule;
+  // Add an example reaction rule to display a warning message if conflicts detected
+  $rules['rules_display_conflict_message_on_node_save'] = entity_import('rules_config', '{ "rules_display_conflict_message_on_node_save" : {
+      "LABEL" : "Display conflict message on node save",
+        "PLUGIN" : "reaction rule",
+        "REQUIRES" : [ "resource_conflict", "rules" ],
+        "ON" : [ "node_presave" ],
+        "IF" : [ { "resource_conflict_contains_conflict" : { "node" : [ "node" ] } } ],
+        "DO" : [
+          { "resource_conflict_load_conflict_list" : {
+            "USING" : { "node" : [ "node" ] },
+              "PROVIDE" : { "conflict_list" : { "conflict_list" : "Conflict List" } }
+          }
+        },
+      { "LOOP" : {
+        "USING" : { "list" : [ "conflict-list" ] },
+          "ITEM" : { "list_item" : "Current list item" },
+          "DO" : [
+            { "resource_conflict_form_error" : { "message" : "Resource conflict detected with [list-item:title] " } }
+          ]
+        }
+      }
+    ]
+  }
+}');
 
   return($rules);
 }
