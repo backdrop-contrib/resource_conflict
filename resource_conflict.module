@@ -60,13 +60,14 @@ function resource_conflict_form_error($message) {
  * Implements hook_node_validate().
  * Throws a validation error for any errors set in SESSION
  * TODO: a better way to throw form errors with Rules.
- */
+*/
 function resource_conflict_node_validate($node, $form) {
   $type = $node->type;
   if (!variable_get('rc_type_' . $type, FALSE)) {
     // Conflict handling is not enabled for this content type
     return;
   }
+  rules_invoke_event('resource_conflict_node_validation', $node, $form);
   if (isset($_SESSION['resource_conflict_message'])) {
     // Find the date field that handles conflicts
     $date_field = variable_get('rc_date_field_' . $type, FALSE);

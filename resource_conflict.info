@@ -5,6 +5,7 @@ dependencies[] = entityreference
 dependencies[] = rules
 dependencies[] = date
 dependencies[] = date_api
+dependencies[] = rules_forms
 project = "resource_conflict"
 ; Information added by drupal.org packaging script on 2011-05-03
 version = "7.x-2.x-dev"

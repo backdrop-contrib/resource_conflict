@@ -21,6 +21,21 @@ function resource_conflict_rules_event_info() {
         ),
       ),
     ),
+    'resource_conflict_node_validation' => array(
+      'group' => t('Resource Conflict'),
+      'label' => t('A resource conflict node form is validated'),
+      'module' => 'resource_conflict',
+      'variables' => array(
+        'node' => array(
+          'type' => 'node',
+          'label' => t('unsaved node'),
+        ),
+        'form' => array(
+          'type' => 'form',
+          'label' => 'form',
+        )
+      )
+    )
   );
 }
 
