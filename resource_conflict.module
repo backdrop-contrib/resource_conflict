@@ -192,7 +192,7 @@ function resource_conflict_form_alter(&$form, $form_state, $form_id) {
       $form['resource_conflict_set']['rc_info'] = array(
         '#prefix' => '<p>',
         '#suffix' => '</p>',
-        '#value' => t('To set up this content type for conflict checking, first add a Date CCK field with required start and end dates. When the conditions have been met, this section will be enabled for configuration.'),
+        '#value' => t('To set up this content type for conflict checking, first add a Date field with required start and end dates. When the conditions have been met, this section will be enabled for configuration.'),
       );
       return;
     }
@@ -210,23 +210,13 @@ function resource_conflict_form_alter(&$form, $form_state, $form_id) {
     }
 
     if (empty($date_fields)) {
-      $requirements['date_api'] = t('This content type does not contain any suitable Date fields. Please add at least one Date field with required start and end dates.');
-    }
-
-    if (!empty($requirements)) {
-      _resource_conflict_disable($type, TRUE);
       $form['resource_conflict_set']['requirements'] = array(
-        '#prefix' => '<p>' . t('The following requirements for Resource Conflict have not been met:') . '</p><ol>',
-        '#suffix' => '</ol>',
+        '#type' => 'markup',
+        '#prefix' => '<p>', 
+        '#suffix' => '</p>',
         '#weight' => -10,
+        '#markup' => t('This content type does not contain any suitable Date fields. Please add at least one Date field with required start and end dates.'),
       );
-      foreach ($requirements as $component => $error) {
-        $form['resource_conflict_set']['requirements'][$component] = array(
-          '#prefix' => '<li>',
-          '#suffix' => '</li>',
-          '#value' => $error,
-        );
-      }
     }
     else {
       $form['resource_conflict_set']['rc_type'] = array(
