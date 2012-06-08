@@ -256,3 +256,33 @@ function resource_conflict_form_submit($form, &$form_state) {
 
   variable_set("rc_types", $conflict_types);
 }
+
+/**
+ * Implements hook_field_delete_instance()
+ * Notice when an RC-enabled field is deleted and remove it from the RC Registry
+ */
+function resource_conflict_field_delete_instance($instance) {
+  if (variable_get('rc_type_' . $instance['bundle'], FALSE) && (variable_get('rc_date_field_' . $instance['bundle'], FALSE) == $instance['field_name'])) {
+    variable_del('rc_type_'. $instance['bundle']);
+    variable_del('rc_date_field_' . $instance['bundle']);
+    $msg = t('Resource Conflict has been disabled for the %type content type as the date field has been deleted.', array('%type' => $instance['bundle']));
+    drupal_set_message($msg, 'warning');
+    watchdog('resource conflict', $msg, WATCHDOG_WARNING);
+  }
+}
+
+/**
+ * Implements hook_field_update_instance()
+ * Notice when an RC-enabled field is modified, and make sure it still meets requirements.
+ */
+function resource_conflict_field_update_instance($instance, $prior_instance) {
+  if (variable_get('rc_type_' . $instance['bundle'], FALSE) && (variable_get('rc_date_field_' . $instance['bundle'], FALSE) == $instance['field_name'])) {
+    $field = field_info_field($instance['field_name']);
+    if ($instance['required'] != 1 || $field['settings']['todate'] != 'required' ) {
+      variable_del('rc_type_'. $instance['bundle']);
+      $msg = t('Resource Conflict has been disabled for the %type content type as the date field no longer meets requirements', array('%type' => $instance['bundle']));
+      drupal_set_message($msg, 'warning');
+      watchdog('resource conflict', $msg, WATCHDOG_WARNING);
+    }
+  }
+}
