@@ -1,6 +1,6 @@
 <?php
 
-/** 
+/**
  * Check a node for conflicts
  */
 function resource_conflict_check_node($node) {
@@ -16,13 +16,18 @@ function resource_conflict_check_node($node) {
 
   $overlapping_node_ids = array();
   if (strpos($date_field, 'field_', 0) === 0) {
-    // Get the start and end Date of the current node
-    $start = $node->{$date_field}['und'][0]['value'];
-    $end   = $node->{$date_field}['und'][0]['value2'];
+    // Get the start and end Date of the current node, accounting for repeat dates
+    $time_spans_raw = array();
+    foreach ($node->{$date_field}['und'] as $single_repetition_date) {
+      $time_spans_raw[] = array(
+        'start' => $single_repetition_date['value'],
+        'end' => $single_repetition_date['value2'],
+      );
+    }
 
     // Get all conflicting Date nodes
-    if (!empty($start) && !empty($end)) {
-      $overlapping_node_ids = _resource_conflict_overlaps_from_date($start, $end);
+    if (isset($time_spans_raw)) {
+      $overlapping_node_ids = _resource_conflict_overlaps_from_date($time_spans_raw);
     }
     else {
       // If we got here, someone broke the requirements, so log the problem and move on
@@ -103,20 +108,21 @@ function resource_conflict_load_conflict_list($node) {
 /**
  * Determine if any nodes conflict between the specified dates using Date API.
  *
- * @param $date_start
- *   The start date of the date to check
- * @param $date_end
- *   The end date of the date to check.
+ * @param $time_spans_input
+ *   An array of 'time span' arrays. Each array has the following keys:
+ *   - start: An ISO timestamp representing the start of the time span.
+ *   - end:  An ISO timestamp representing the end of the time span.
  * @return
- *   An array of node ID's
+ *   An array of node IDs.
  */
-function _resource_conflict_overlaps_from_date($date_start, $date_end) {
-  // Make the default type to DATE_ISO.
-  $type = DATE_ISO;
-  $date_startobj = New DateObject($date_start, 'GMT');
-  $date_endobj   = New DateObject($date_end, 'GMT');
-
-  return _resource_conflict_get_overlaps($date_startobj, $date_endobj);
+function _resource_conflict_overlaps_from_date($time_spans_input) {
+  $time_spans = array();
+  foreach ($time_spans_input as $single_time_span_input) {
+    $date_startobj = New DateObject($single_time_span_input['start'], 'GMT');
+    $date_endobj   = New DateObject($single_time_span_input['end'], 'GMT');
+    $time_spans[] = array('start' => $date_startobj, 'end' => $date_endobj);
+  }
+  return _resource_conflict_get_overlaps($time_spans);
 }
 
 /**
@@ -127,33 +133,36 @@ function _resource_conflict_overlaps_from_date($date_start, $date_end) {
  * 3. The event encompasses $start and $end
  * 4. Allow the end of one event to occur at the start of the next
  *
- * @param $start
- *   The start time of events to search as dateAPI object
- * @param $end
- *   The end time of events to search as dateAPI object
+ * @param $time_spans
+ *   An array of 'time span' arrays with the following keys:
+ *   - start: A Date API object representing the start of the time span.
+ *   - end:  A Date API object representing the end of the time span.
+ *   Each 'time span' array has a 'start' and an 'end' key and dateAPI objects as values.
  * @return
- *   An array of node ID's
+ *   An array of node IDs.
  */
-function _resource_conflict_get_overlaps($start, $end) {
-  $date_start = $start->format(DATE_FORMAT_DATETIME);
-  $date_end = $end->format(DATE_FORMAT_DATETIME);
+function _resource_conflict_get_overlaps($time_spans) {
   $rows = array();
-  $conflict_types = _resource_conflict_get_conflict_enabled_types();
-  foreach ($conflict_types as $type) {
-    $date_field = variable_get('rc_date_field_' . $type, FALSE);
-    if (strpos($date_field, 'field_', 0) === 0) {
-      $date_table = '{' . 'field_data_' . $date_field . '}';
-      $start_field_name = $date_field . '_value';
-      $end_field_name = $date_field . '_value2';
-      $query = "SELECT DISTINCT {node}.nid FROM {node} INNER JOIN $date_table date_table ON {node}.vid = date_table.revision_id
-       WHERE(:date_start >= date_table.$start_field_name AND :date_start < date_table.$end_field_name)
-       OR(:date_end > date_table.$start_field_name AND :date_end <= date_table.$end_field_name)
-       OR(:date_start <= date_table.$start_field_name AND :date_end >= date_table.$end_field_name)";
-      $result = db_query($query, array(':date_start' => $date_start, ':date_end' => $date_end));
+  foreach ($time_spans as $time_span) {
+    $date_start = $time_span['start']->format(DATE_FORMAT_DATETIME);
+    $date_end = $time_span['end']->format(DATE_FORMAT_DATETIME);
+    $conflict_types = _resource_conflict_get_conflict_enabled_types();
+    foreach ($conflict_types as $type) {
+      $date_field = variable_get('rc_date_field_' . $type, FALSE);
+      if (strpos($date_field, 'field_', 0) === 0) {
+        $date_table = '{' . 'field_data_' . $date_field . '}';
+        $start_field_name = $date_field . '_value';
+        $end_field_name = $date_field . '_value2';
+        $query = "SELECT DISTINCT {node}.nid FROM {node} INNER JOIN $date_table date_table ON {node}.vid = date_table.revision_id
+         WHERE(BINARY :date_start >= BINARY date_table.$start_field_name AND BINARY :date_start < BINARY date_table.$end_field_name)
+         OR(BINARY :date_end > BINARY date_table.$start_field_name AND BINARY :date_end <= BINARY date_table.$end_field_name)
+         OR(BINARY :date_start <= BINARY date_table.$start_field_name AND BINARY :date_end >= BINARY date_table.$end_field_name)";
+        $result = db_query($query, array(':date_start' => $date_start, ':date_end' => $date_end));
 
-      // Create an array of all of the results
-      while ($row = $result->fetchAssoc()) {
-        $rows[] = $row['nid'];
+        // Create an array of all of the results
+        while ($row = $result->fetchAssoc()) {
+          $rows[] = $row['nid'];
+        }
       }
     }
   }
