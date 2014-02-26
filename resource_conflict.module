@@ -254,9 +254,14 @@ function resource_conflict_form_submit($form, &$form_state) {
   $type = $form_state['values']['type'];
   $conflict_types = variable_get("rc_types", array());
 
-  //make new entry if this type is conflict handled
-  if (isset($form_state['values']['rc_type'])&&($form_state['values']['rc_type'])) {
-    $conflict_types[] = $type;
+  // Add this content type to our list of enabled types if checked
+  if (isset($form_state['values']['rc_type']) && $form_state['values']['rc_type'] == 1) {
+    if (!in_array($type, $conflict_types)) {
+      $conflict_types[] = $type;  
+    }
+  // Otherwise remove it if unchecked
+  } elseif (($key = array_search($type, $conflict_types)) !== FALSE) {
+    unset($conflict_types[$key]);
   }
 
   variable_set("rc_types", $conflict_types);
