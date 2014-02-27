@@ -256,28 +256,34 @@ function resource_conflict_form_submit($form, &$form_state) {
 
   // Add this content type to our list of enabled types if checked
   if (isset($form_state['values']['rc_type']) && $form_state['values']['rc_type'] == 1) {
-    if (!in_array($type, $conflict_types)) {
-      $conflict_types[] = $type;  
-    }
-  // Otherwise remove it if unchecked
-  } elseif (($key = array_search($type, $conflict_types)) !== FALSE) {
-    unset($conflict_types[$key]);
+    _resource_conflict_add_type($type);
+  } else {
+    _resource_conflict_remove_type($type);
   }
-
-  variable_set("rc_types", $conflict_types);
 }
 
 /**
  * Implements hook_field_delete_instance()
- * Notice when an RC-enabled field is deleted and remove it from the RC Registry
+ *
+ * If this field was assigned as an RC date field, we want to delete it's data
+ * from our registry and possibly warn the user that RC was disabled for this
+ * content type
  */
 function resource_conflict_field_delete_instance($instance) {
-  if (variable_get('rc_type_' . $instance['bundle'], FALSE) && (variable_get('rc_date_field_' . $instance['bundle'], FALSE) == $instance['field_name'])) {
-    variable_del('rc_type_'. $instance['bundle']);
+  $rc_date_field = variable_get('rc_date_field_' . $instance['bundle'], FALSE);
+  if ($rc_date_field == $instance['field_name']) {
     variable_del('rc_date_field_' . $instance['bundle']);
-    $msg = t('Resource Conflict has been disabled for the %type content type as the date field has been deleted.', array('%type' => $instance['bundle']));
-    drupal_set_message($msg, 'warning');
-    watchdog('resource conflict', $msg, WATCHDOG_WARNING);
+
+    // Msg user if the content type was enabled for RC
+    $content_type_enabled = variable_get('rc_type_'. $instance['bundle'], FALSE);
+    if ($content_type_enabled == 1) {
+      $msg = t('Resource Conflict has been disabled for the %type content type as the date field has been deleted.', array('%type' => $instance['bundle']));
+      drupal_set_message($msg, 'warning');
+      watchdog('resource conflict', $msg, WATCHDOG_WARNING);
+    }
+
+    // Delete the reg values for this content type whether it was enabled or not
+    _resource_conflict_remove_type($instance['bundle']);
   }
 }
 
@@ -289,10 +295,34 @@ function resource_conflict_field_update_instance($instance, $prior_instance) {
   if (variable_get('rc_type_' . $instance['bundle'], FALSE) && (variable_get('rc_date_field_' . $instance['bundle'], FALSE) == $instance['field_name'])) {
     $field = field_info_field($instance['field_name']);
     if ($instance['required'] != 1 || $field['settings']['todate'] != 'required' ) {
-      variable_del('rc_type_'. $instance['bundle']);
+      variable_del('rc_date_field_' . $instance['bundle']);
+      _resource_conflict_remove_type($instance['bundle']);
+
       $msg = t('Resource Conflict has been disabled for the %type content type as the date field no longer meets requirements', array('%type' => $instance['bundle']));
       drupal_set_message($msg, 'warning');
       watchdog('resource conflict', $msg, WATCHDOG_WARNING);
     }
   }
 }
+
+function _resource_conflict_add_type($content_type) {
+  $conflict_types = variable_get("rc_types", array());
+
+  if (!in_array($content_type, $conflict_types)) {
+    $conflict_types[] = $content_type;
+    variable_set("rc_types", $conflict_types);
+  }
+}
+
+function _resource_conflict_remove_type($content_type) {
+  $conflict_types = variable_get("rc_types", array());
+
+  if (($key = array_search($content_type, $conflict_types)) !== FALSE) {
+    unset($conflict_types[$key]);
+    variable_set("rc_types", $conflict_types);
+  }
+
+  variable_del('rc_type_'. $content_type);
+}
+
+
