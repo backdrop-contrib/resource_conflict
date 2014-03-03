@@ -201,16 +201,14 @@ function resource_conflict_form_alter(&$form, $form_state, $form_id) {
       );
       return;
     }
+
     $date_fields = array();
-    if ($type != NULL) {
-      $fields = field_info_instances('node', $type);
-      foreach ($fields as $fieldname => $field) {
-          $fieldinfo = field_info_field($fieldname);
-        if (isset($field['display']['default']['module'])&&($field['display']['default']['module'] == 'date')&&($field['required'] == 1)) {
-          if ($fieldinfo['settings']['todate'] == 'required' ) {
-            $date_fields[$fieldname] = $field['label'];
-          }
-        }
+    $fields = field_info_instances('node', $type);
+    foreach ($fields as $field_name => $field) {
+      $field_info = field_info_field($field_name);
+
+      if ($field_info['module'] == 'date' && $field['required'] == 1 && $field_info['settings']['todate'] == 'required') {
+        $date_fields[$field_name] = $field['label'];
       }
     }
 
