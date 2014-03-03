@@ -7,7 +7,6 @@ function resource_conflict_check_node($node) {
   // Check the content type to make sure conflict handling is enabled.
   $type = $node->type;
   if (!variable_get('rc_type_' . $type, FALSE)) {
-    // Conflict handling is not enabled for this node.
     return;
   }
 
@@ -15,41 +14,39 @@ function resource_conflict_check_node($node) {
   $date_field = variable_get('rc_date_field_' . $type, FALSE);
 
   $overlapping_node_ids = array();
-  if (strpos($date_field, 'field_', 0) === 0) {
-    // Get the start and end Date of the current node, accounting for repeat dates
-    $time_spans_raw = array();
-    $date_items = field_get_items('node', $node, $date_field);
-    $date_field_info = field_info_field($date_field);
-    $date_format = date_type_format($date_field_info['type']);
+  // Get the start and end Date of the current node, accounting for repeat dates
+  $time_spans_raw = array();
+  $date_items = field_get_items('node', $node, $date_field);
+  $date_field_info = field_info_field($date_field);
+  $date_format = date_type_format($date_field_info['type']);
 
-    foreach ($date_items as $single_repetition_date) {
-      // Avoid the "Add another item" row for repeat dates
-      if (!is_array($single_repetition_date)) {
-        continue;
-      }
-      // Unix stamps should be interpreted as integers, but field_get_items pulls them
-      // out as strings. We need to cast back to int or our database comparisons fail
-      if ($date_format == DATE_FORMAT_UNIX) {
-        $start = (int)$single_repetition_date['value'];
-        $end = (int)$single_repetition_date['value2'];
-      } else {
-        $start = $single_repetition_date['value'];
-        $end = $single_repetition_date['value2'];
-      }
-      $time_spans_raw[] = array(
-        'start' => $start,
-        'end' => $end,
-      );
+  foreach ($date_items as $single_repetition_date) {
+    // Avoid the "Add another item" row for repeat dates
+    if (!is_array($single_repetition_date)) {
+      continue;
     }
+    // Unix stamps should be interpreted as integers, but field_get_items pulls them
+    // out as strings. We need to cast back to int or our database comparisons fail
+    if ($date_format == DATE_FORMAT_UNIX) {
+      $start = (int)$single_repetition_date['value'];
+      $end = (int)$single_repetition_date['value2'];
+    } else {
+      $start = $single_repetition_date['value'];
+      $end = $single_repetition_date['value2'];
+    }
+    $time_spans_raw[] = array(
+      'start' => $start,
+      'end' => $end,
+    );
+  }
 
-    // Get all conflicting Date nodes
-    if (isset($time_spans_raw)) {
-      $overlapping_node_ids = _resource_conflict_get_overlaps($time_spans_raw);
-    }
-    else {
-      // If we got here, someone broke the requirements, so log the problem and move on
-      watchdog('resource_conflict', 'Conflict checking is enabled for Content type %type, but no date field has been selected for conflict checking.', array('%type' => $type), 'WATCHDOG_ERROR');
-    }
+  // Get all conflicting Date nodes
+  if (isset($time_spans_raw)) {
+    $overlapping_node_ids = _resource_conflict_get_overlaps($time_spans_raw);
+  }
+  else {
+    // If we got here, someone broke the requirements, so log the problem and move on
+    watchdog('resource_conflict', 'Conflict checking is enabled for Content type %type, but no date field has been selected for conflict checking.', array('%type' => $type), 'WATCHDOG_ERROR');
   }
 
   // Load conflicting nodes
@@ -141,7 +138,7 @@ function resource_conflict_load_conflict_list($node) {
  */
 function _resource_conflict_get_overlaps($time_spans) {
   $nids = array();
-  $conflict_types = _resource_conflict_get_conflict_enabled_types();
+  $conflict_types = variable_get("rc_types", array());
   foreach ($conflict_types as $type) {
     $date_field = variable_get('rc_date_field_' . $type, FALSE);
     $date_table = '{field_data_' . $date_field . '}';
@@ -166,93 +163,80 @@ function _resource_conflict_get_overlaps($time_spans) {
 }
 
 /**
- * Get the conflict enabled content types
- *
- * @return
- *   An array of type names
- */
-function _resource_conflict_get_conflict_enabled_types() {
-  $conflict_types = variable_get("rc_types", array());
-  return $conflict_types;
-}
-
-/**
  * Implements hook_form_alter().
  */
 function resource_conflict_form_alter(&$form, $form_state, $form_id) {
-  if ($form_id == 'node_type_form') {
-    $requirements = array();
+  if ($form_id != 'node_type_form') {
+    return;
+  }
 
-    $type = (isset($form['old_type']) && isset($form['old_type']['#value'])) ? $form['old_type']['#value'] : NULL;
+  $type = (isset($form['old_type']) && isset($form['old_type']['#value'])) ? $form['old_type']['#value'] : NULL;
 
-    $form['resource_conflict_set'] = array(
-      '#type' => 'fieldset',
-      '#title' => t('Resource Conflict'),
-      '#collapsible' => TRUE,
-      '#group' => 'additional_settings',
+  $form['resource_conflict_set'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Resource Conflict'),
+    '#collapsible' => TRUE,
+    '#group' => 'additional_settings',
+  );
+
+  // The user is adding a new content type
+  if ($type == NULL) {
+    $form['resource_conflict_set']['rc_info'] = array(
+      '#prefix' => '<p>',
+      '#suffix' => '</p>',
+      '#value' => t('To set up this content type for conflict checking, first add a Date field with required start and end dates. When the conditions have been met, this section will be enabled for configuration.'),
+    );
+    return;
+  }
+
+  $date_fields = array();
+  $fields = field_info_instances('node', $type);
+  foreach ($fields as $field_name => $field) {
+    $field_info = field_info_field($field_name);
+
+    if ($field_info['module'] == 'date' && $field['required'] == 1 && $field_info['settings']['todate'] == 'required') {
+      $date_fields[$field_name] = $field['label'];
+    }
+  }
+
+  if (empty($date_fields)) {
+    $form['resource_conflict_set']['requirements'] = array(
+      '#type' => 'markup',
+      '#prefix' => '<p>', 
+      '#suffix' => '</p>',
+      '#weight' => -10,
+      '#markup' => t('This content type does not contain any suitable Date fields. Please add at least one Date field with required start and end dates.'),
+    );
+  }
+  else {
+    $form['resource_conflict_set']['rc_type'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Enable resource conflict checking for this content type'),
+      '#default_value' => variable_get('rc_type_' . $type, 0),
+      '#weight' => -8,
     );
 
-    // The user is adding a new content type
-    if ($type == NULL) {
-      $form['resource_conflict_set']['rc_info'] = array(
-        '#prefix' => '<p>',
-        '#suffix' => '</p>',
-        '#value' => t('To set up this content type for conflict checking, first add a Date field with required start and end dates. When the conditions have been met, this section will be enabled for configuration.'),
-      );
-      return;
-    }
+    $form['resource_conflict_set']['rc_date_field'] = array(
+      '#type' => 'select',
+      '#title' => t('Field to use as the date for conflict checks'),
+      '#options' => $date_fields,
+      '#multiple' => FALSE,
+      '#default_value' => variable_get('rc_date_field_' . $type, FALSE),
+      '#description' => t("Select the date field to use to check for resource conflicts."),
+    );
 
-    $date_fields = array();
-    $fields = field_info_instances('node', $type);
-    foreach ($fields as $field_name => $field) {
-      $field_info = field_info_field($field_name);
-
-      if ($field_info['module'] == 'date' && $field['required'] == 1 && $field_info['settings']['todate'] == 'required') {
-        $date_fields[$field_name] = $field['label'];
-      }
-    }
-
-    if (empty($date_fields)) {
-      $form['resource_conflict_set']['requirements'] = array(
-        '#type' => 'markup',
-        '#prefix' => '<p>', 
-        '#suffix' => '</p>',
-        '#weight' => -10,
-        '#markup' => t('This content type does not contain any suitable Date fields. Please add at least one Date field with required start and end dates.'),
-      );
-    }
-    else {
-      $form['resource_conflict_set']['rc_type'] = array(
-        '#type' => 'checkbox',
-        '#title' => t('Enable resource conflict checking for this content type'),
-        '#default_value' => variable_get('rc_type_' . $type, 0),
-        '#weight' => -8,
-      );
-
-      $form['resource_conflict_set']['rc_date_field'] = array(
-        '#type' => 'select',
-        '#title' => t('Field to use as the date for conflict checks'),
-        '#options' => $date_fields,
-        '#multiple' => FALSE,
-        '#default_value' => variable_get('rc_date_field_' . $type, FALSE),
-        '#description' => t("Select the date field to use to check for resource conflicts."),
-      );
-
-    }
-
-    //set custom validation and submit callbacks
-    $form['#submit'][] = 'resource_conflict_form_submit';
   }
+
+  // Add our custom submission handler so we can manage the RC settings
+  $form['#submit'][] = 'resource_conflict_form_submit';
 }
 
 /**
- * Submit the node_type_form
+ * Our custom submit handler for when a content type is saved
  */
 function resource_conflict_form_submit($form, &$form_state) {
   $type = $form_state['values']['type'];
-  $conflict_types = variable_get("rc_types", array());
 
-  // Add this content type to our list of enabled types if checked
   if (isset($form_state['values']['rc_type']) && $form_state['values']['rc_type'] == 1) {
     _resource_conflict_add_type($type);
   } else {
@@ -290,9 +274,9 @@ function resource_conflict_field_delete_instance($instance) {
  * Notice when an RC-enabled field is modified, and make sure it still meets requirements.
  */
 function resource_conflict_field_update_instance($instance, $prior_instance) {
-  if (variable_get('rc_type_' . $instance['bundle'], FALSE) && (variable_get('rc_date_field_' . $instance['bundle'], FALSE) == $instance['field_name'])) {
+  if (variable_get('rc_type_' . $instance['bundle'], FALSE) && variable_get('rc_date_field_' . $instance['bundle'], FALSE) == $instance['field_name']) {
     $field = field_info_field($instance['field_name']);
-    if ($instance['required'] != 1 || $field['settings']['todate'] != 'required' ) {
+    if ($instance['required'] != 1 || $field['settings']['todate'] != 'required') {
       variable_del('rc_date_field_' . $instance['bundle']);
       _resource_conflict_remove_type($instance['bundle']);
 
@@ -303,6 +287,9 @@ function resource_conflict_field_update_instance($instance, $prior_instance) {
   }
 }
 
+/**
+ * Adds the provided content type to our list of enabled RC types
+ */
 function _resource_conflict_add_type($content_type) {
   $conflict_types = variable_get("rc_types", array());
 
@@ -312,6 +299,9 @@ function _resource_conflict_add_type($content_type) {
   }
 }
 
+/**
+ * Removes the provided content type from our list of enabled RC types
+ */
 function _resource_conflict_remove_type($content_type) {
   $conflict_types = variable_get("rc_types", array());
 
