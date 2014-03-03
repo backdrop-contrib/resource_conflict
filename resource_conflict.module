@@ -10,59 +10,57 @@ function resource_conflict_check_node($node) {
     return;
   }
 
-  // Find the date field to use for time overlapping_node_ids detection.
+  // Collect the raw start and end dates attached to this node
   $date_field = variable_get('rc_date_field_' . $type, FALSE);
-
-  $overlapping_node_ids = array();
-  // Get the start and end Date of the current node, accounting for repeat dates
-  $time_spans_raw = array();
-  $date_items = field_get_items('node', $node, $date_field);
   $date_field_info = field_info_field($date_field);
   $date_format = date_type_format($date_field_info['type']);
-
+  $date_items = field_get_items('node', $node, $date_field);
+  $time_spans_raw = array();
   foreach ($date_items as $single_repetition_date) {
     // Avoid the "Add another item" row for repeat dates
     if (!is_array($single_repetition_date)) {
       continue;
     }
+
+    $start = $single_repetition_date['value'];
+    $end = $single_repetition_date['value2'];
+
+    // Skip unless the user filled in a start and end date
+    if (empty($start) || empty($end)) {
+      continue;
+    }
+
     // Unix stamps should be interpreted as integers, but field_get_items pulls them
     // out as strings. We need to cast back to int or our database comparisons fail
     if ($date_format == DATE_FORMAT_UNIX) {
-      $start = (int)$single_repetition_date['value'];
-      $end = (int)$single_repetition_date['value2'];
-    } else {
-      $start = $single_repetition_date['value'];
-      $end = $single_repetition_date['value2'];
+      $start = (int)$start;
+      $end = (int)$end;
     }
+    
     $time_spans_raw[] = array(
       'start' => $start,
       'end' => $end,
     );
   }
 
-  // Get all conflicting Date nodes
-  if (isset($time_spans_raw)) {
-    $overlapping_node_ids = _resource_conflict_get_overlaps($time_spans_raw);
-  }
-  else {
-    // If we got here, someone broke the requirements, so log the problem and move on
-    watchdog('resource_conflict', 'Conflict checking is enabled for Content type %type, but no date field has been selected for conflict checking.', array('%type' => $type), 'WATCHDOG_ERROR');
+  // Back out if we don't have date data to compare with
+  if (empty($time_spans_raw)) {
+    return array();
   }
 
   // Load conflicting nodes
+  $conflicting_node_ids = _resource_conflict_get_overlaps($time_spans_raw);
   $conflicting_nodes = array();
-  foreach ($overlapping_node_ids as $nid) {
+  foreach ($conflicting_node_ids as $nid) {
     // Don't have the node conflict with itself
     if ($nid != $node->nid) {
       $conflicting_nodes[] = node_load($nid);
     }
   }
+
   // Fire Rules action for each conflict detected
   foreach ($conflicting_nodes as $conflicting_node) {
     rules_invoke_event('resource_conflict_conflict_detected', $node, $conflicting_node);
-  }
-  if (!$conflicting_nodes) {
-    return FALSE;
   }
   return $conflicting_nodes;
 }
@@ -102,7 +100,7 @@ function resource_conflict_node_validate($node, $form) {
  */
 function resource_conflict_contains_conflict($node) {
   $conflicting_nodes = resource_conflict_check_node($node);
-  if (!$conflicting_nodes) {
+  if (empty($conflicting_nodes)) {
     return FALSE;
   }
   return TRUE;
@@ -113,7 +111,7 @@ function resource_conflict_contains_conflict($node) {
  */
 function resource_conflict_load_conflict_list($node) {
   $conflict_list = resource_conflict_check_node($node);
-  if (!$conflict_list) {
+  if (empty($conflict_list)) {
     return FALSE;
   }
   return array('conflict_list' => $conflict_list);
@@ -191,11 +189,9 @@ function resource_conflict_form_alter(&$form, $form_state, $form_id) {
 
   $date_fields = array();
   $fields = field_info_instances('node', $type);
-  foreach ($fields as $field_name => $field) {
-    $field_info = field_info_field($field_name);
-
-    if ($field_info['module'] == 'date' && $field['required'] == 1 && $field_info['settings']['todate'] == 'required') {
-      $date_fields[$field_name] = $field['label'];
+  foreach ($fields as $machine_name => $field_instance) {
+    if (_resource_conflict_check_field_compatibility($field_instance)) {
+      $date_fields[$machine_name] = $field_instance['label'];
     }
   }
 
@@ -275,8 +271,7 @@ function resource_conflict_field_delete_instance($instance) {
  */
 function resource_conflict_field_update_instance($instance, $prior_instance) {
   if (variable_get('rc_type_' . $instance['bundle'], FALSE) && variable_get('rc_date_field_' . $instance['bundle'], FALSE) == $instance['field_name']) {
-    $field = field_info_field($instance['field_name']);
-    if ($instance['required'] != 1 || $field['settings']['todate'] != 'required') {
+    if (!_resource_conflict_check_field_compatibility($instance)) {
       variable_del('rc_date_field_' . $instance['bundle']);
       _resource_conflict_remove_type($instance['bundle']);
 
@@ -311,6 +306,17 @@ function _resource_conflict_remove_type($content_type) {
   }
 
   variable_del('rc_type_'. $content_type);
+}
+
+/**
+ * Checks if the provided field instance is compatible with our module
+ */
+function _resource_conflict_check_field_compatibility($field_instance) {
+  $field_info = field_info_field($field_instance['field_name']);
+  if ($field_info['module'] == 'date' && $field_info['settings']['todate'] == 'required') {
+    return true;
+  }
+  return false;
 }
 
 
