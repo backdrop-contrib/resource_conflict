@@ -125,7 +125,7 @@ function resource_conflict_contains_conflict($node) {
 function resource_conflict_load_conflict_list($node) {
   $conflicting_node_ids = _resource_conflict_get_conflicting_nids($node);
   if (empty($conflicting_node_ids)) {
-    return FALSE; // TODO return array() instead?
+    return array('conflict_list' => array());
   }
 
   $conflicting_nodes = array();
@@ -168,12 +168,15 @@ function _resource_conflict_query_for_conflicts($time_spans, $nid) {
       $query = db_select('node', 'n');
       $query->join($date_table, 'date_table', 'n.nid = date_table.revision_id');
       $query->fields('n', array('nid'))
-            ->condition('n.nid', $nid, '<>')
             ->condition(db_or()
               ->condition(db_and()->condition($start_field, $time_span['start'], '<=')->condition($end_field, $time_span['start'], '>'))
               ->condition(db_and()->condition($start_field, $time_span['end'], '<')->condition($end_field, $time_span['end'], '>='))
               ->condition(db_and()->condition($start_field, $time_span['start'], '>=')->condition($end_field, $time_span['end'], '<='))
             )->distinct();
+      // $nid may be null if the unsaved node was not yet created
+      if ($nid) {
+        $query->condition('n.nid', $nid, '<>');
+      }
       $result = $query->execute();
 
       $nids = array_merge($nids, $result->fetchCol());
