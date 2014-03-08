@@ -20,7 +20,8 @@ function resource_conflict_node_validate($node, $form) {
     // Find the date field that handles conflicts
     $date_field = variable_get('rc_date_field_' . $node->type, FALSE);
     $form_error = theme('item_list', $_SESSION['resource_conflict_message']);
-    form_set_error($date_field, $form_error);
+    $message = implode('<br/>', $_SESSION['resource_conflict_message']);
+    form_set_error('', $message);
     unset($_SESSION['resource_conflict_message']);
   }
 }
@@ -97,7 +98,7 @@ function _resource_conflict_get_timespans($node) {
  * for how this session var is used to set a form error
  */
 function resource_conflict_form_error($message) {
-  $_SESSION['resource_conflict_message']['items'][] = $message;
+  $_SESSION['resource_conflict_message'][] = $message;
 }
 
 /**
