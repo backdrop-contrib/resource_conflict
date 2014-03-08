@@ -5,7 +5,7 @@
  * Fires during node form validation
  */
 function resource_conflict_rules_event_info() {
-  return array(
+  $events = array(
     'resource_conflict_conflict_detected' => array(
       'group' => t('Resource Conflict'),
       'label' => t('A resource conflict was detected'),
@@ -30,13 +30,21 @@ function resource_conflict_rules_event_info() {
           'type' => 'node',
           'label' => t('unsaved node'),
         ),
-        'form' => array(
-          'type' => 'form',
-          'label' => 'form',
-        )
       )
     )
   );
+
+  // If rules_forms is enabled, we can pass the form object as a variable
+  // so all the various actions that rules_forms provides can be used against
+  // the form.
+  if (module_exists('rules_forms')) {
+    $events['resource_conflict_node_validation']['variables']['form'] = array(
+      'type' => 'form',
+      'label' => t('form'),
+    );
+  }
+
+  return $events;
 }
 
 /** 

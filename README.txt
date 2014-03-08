@@ -14,7 +14,6 @@ example to only throw errors when certain field values are identical.
 Entity: http://drupal.org/project/entity
 Rules: http://drupal.org/project/rules
 Date: http://drupal.org/project/date
-Rules Forms: http://drupal.org/project/rules_forms
 
 == Installation ==
 
