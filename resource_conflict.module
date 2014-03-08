@@ -172,7 +172,9 @@ function _resource_conflict_query_for_conflicts($time_spans, $nid) {
               ->condition(db_and()->condition($start_field, $time_span['start'], '<=')->condition($end_field, $time_span['start'], '>'))
               ->condition(db_and()->condition($start_field, $time_span['end'], '<')->condition($end_field, $time_span['end'], '>='))
               ->condition(db_and()->condition($start_field, $time_span['start'], '>=')->condition($end_field, $time_span['end'], '<='))
-            )->distinct();
+            )
+            ->addTag('resource_conflict')
+            ->distinct();
       // $nid may be null if the unsaved node was not yet created
       if ($nid) {
         $query->condition('n.nid', $nid, '<>');
