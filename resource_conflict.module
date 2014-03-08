@@ -1,23 +1,68 @@
 <?php
 
 /**
+ * Implements hook_node_validate().
+ *
+ * Fire a rule event if this node is enabled for RC.
+ * If the Rule executed our action "resource_conflict_form_error"
+ * Then a session var would have been set that indicates there was a conflict
+ * and we should set a form error
+ */
+function resource_conflict_node_validate($node, $form) {
+  if (!variable_get('rc_type_' . $node->type, FALSE)) {
+    // Conflict handling is not enabled for this content type
+    return;
+  }
+  
+  rules_invoke_event('resource_conflict_node_validation', $node, $form);
+
+  if (isset($_SESSION['resource_conflict_message'])) {
+    // Find the date field that handles conflicts
+    $date_field = variable_get('rc_date_field_' . $node->type, FALSE);
+    $form_error = theme('item_list', $_SESSION['resource_conflict_message']);
+    form_set_error($date_field, $form_error);
+    unset($_SESSION['resource_conflict_message']);
+  }
+}
+
+/**
  * Check a node for conflicts
  */
-function resource_conflict_check_node($node) {
+function _resource_conflict_get_conflicting_nids($node) {
   // Check the content type to make sure conflict handling is enabled.
-  $type = $node->type;
-  if (!variable_get('rc_type_' . $type, FALSE)) {
+  if (!variable_get('rc_type_' . $node->type, FALSE)) {
     return;
   }
 
-  // Collect the raw start and end dates attached to this node
-  $date_field = variable_get('rc_date_field_' . $type, FALSE);
+  $time_spans = _resource_conflict_get_timespans($node);
+
+  // Back out if we don't have date data to compare with
+  if (empty($time_spans)) {
+    return array();
+  }
+
+  return _resource_conflict_query_for_conflicts($time_spans, $node->nid);
+}
+
+/**
+ * Load an array of start/end times for the RC enabled date field
+ * from the passed in node
+ */
+function _resource_conflict_get_timespans($node) {
+  $time_spans = array();
+
+  $date_field = variable_get('rc_date_field_' . $node->type, FALSE);
+  if (!$date_field) {
+    return array();
+  }
+
   $date_field_info = field_info_field($date_field);
   $date_format = date_type_format($date_field_info['type']);
   $date_items = field_get_items('node', $node, $date_field);
-  $time_spans_raw = array();
+  
+  // Date repeat fields may have multiple values, so we iterate over each
   foreach ($date_items as $single_repetition_date) {
-    // Avoid the "Add another item" row for repeat dates
+    // Avoid the "Add another item" element that is added for date repeat fields
     if (!is_array($single_repetition_date)) {
       continue;
     }
@@ -37,72 +82,39 @@ function resource_conflict_check_node($node) {
       $end = (int)$end;
     }
     
-    $time_spans_raw[] = array(
+    $time_spans[] = array(
       'start' => $start,
       'end' => $end,
     );
   }
 
-  // Back out if we don't have date data to compare with
-  if (empty($time_spans_raw)) {
-    return array();
-  }
-
-  // Load conflicting nodes
-  $conflicting_node_ids = _resource_conflict_get_overlaps($time_spans_raw);
-  $conflicting_nodes = array();
-  foreach ($conflicting_node_ids as $nid) {
-    // Don't have the node conflict with itself
-    if ($nid != $node->nid) {
-      $conflicting_nodes[] = node_load($nid);
-    }
-  }
-
-  // Fire Rules action for each conflict detected
-  foreach ($conflicting_nodes as $conflicting_node) {
-    rules_invoke_event('resource_conflict_conflict_detected', $node, $conflicting_node);
-  }
-  return $conflicting_nodes;
+  return $time_spans;
 }
 
 /**
- * Sneak a form error into validation with the Session variable.
- * It's a dirty hack, but it will work for now.
+ * Rules Action: poor mans way of passing a form error to our form validation
+ * for a resource conflict node form. See resource_conflict_node_validate()
+ * for how this session var is used to set a form error
  */
 function resource_conflict_form_error($message) {
   $_SESSION['resource_conflict_message']['items'][] = $message;
 }
 
 /**
- * Implements hook_node_validate().
- * Throws a validation error for any errors set in SESSION
- * TODO: a better way to throw form errors with Rules.
-*/
-function resource_conflict_node_validate($node, $form) {
-  $type = $node->type;
-  if (!variable_get('rc_type_' . $type, FALSE)) {
-    // Conflict handling is not enabled for this content type
-    return;
-  }
-  rules_invoke_event('resource_conflict_node_validation', $node, $form);
-  if (isset($_SESSION['resource_conflict_message'])) {
-    // Find the date field that handles conflicts
-    $date_field = variable_get('rc_date_field_' . $type, FALSE);
-    $form_error = theme('item_list', $_SESSION['resource_conflict_message']);
-    form_set_error($date_field, $form_error);
-    unset($_SESSION['resource_conflict_message']);
-  }
-}
-
-
-/**
  * Rules Condition: check a node object for conflicts.
  */
 function resource_conflict_contains_conflict($node) {
-  $conflicting_nodes = resource_conflict_check_node($node);
-  if (empty($conflicting_nodes)) {
+  $conflicting_node_ids = _resource_conflict_get_conflicting_nids($node);
+  if (empty($conflicting_node_ids)) {
     return FALSE;
   }
+
+  // Fire Rules event for each conflict detected
+  foreach ($conflicting_node_ids as $conflicting_node_id) {
+    $conflicting_node = node_load($conflicting_node_id);
+    rules_invoke_event('resource_conflict_conflict_detected', $node, $conflicting_node);
+  }
+
   return TRUE;
 }
 
@@ -110,11 +122,17 @@ function resource_conflict_contains_conflict($node) {
  * Rules Action: load list of conflicting nodes, if any
  */
 function resource_conflict_load_conflict_list($node) {
-  $conflict_list = resource_conflict_check_node($node);
-  if (empty($conflict_list)) {
-    return FALSE;
+  $conflicting_node_ids = _resource_conflict_get_conflicting_nids($node);
+  if (empty($conflicting_node_ids)) {
+    return FALSE; // TODO return array() instead?
   }
-  return array('conflict_list' => $conflict_list);
+
+  $conflicting_nodes = array();
+  foreach ($conflicting_node_ids as $conflicting_node_id) {
+    $conflicting_nodes[] = node_load($conflicting_node_id);
+  }
+
+  return array('conflict_list' => $conflicting_nodes);
 }
 
 /**
@@ -131,10 +149,12 @@ function resource_conflict_load_conflict_list($node) {
  *   - end: End of an event
  *   The date format of each pair is that of the unsaved node's date format
  *   All date fields that are compared must be of the same format
+ * @param $nid
+ *   The node ID of the resource that we're conflict checking for
  * @return
  *   An array of node IDs.
  */
-function _resource_conflict_get_overlaps($time_spans) {
+function _resource_conflict_query_for_conflicts($time_spans, $nid) {
   $nids = array();
   $conflict_types = variable_get("rc_types", array());
   foreach ($conflict_types as $type) {
@@ -147,6 +167,7 @@ function _resource_conflict_get_overlaps($time_spans) {
       $query = db_select('node', 'n');
       $query->join($date_table, 'date_table', 'n.nid = date_table.revision_id');
       $query->fields('n', array('nid'))
+            ->condition('n.nid', $nid, '<>')
             ->condition(db_or()
               ->condition(db_and()->condition($start_field, $time_span['start'], '<=')->condition($end_field, $time_span['start'], '>'))
               ->condition(db_and()->condition($start_field, $time_span['end'], '<')->condition($end_field, $time_span['end'], '>='))
