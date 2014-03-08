@@ -31,6 +31,9 @@ message for conflicts as they are detected.
 3) Create two nodes with overlapping dates to see the default Rule in action. Or
    create your own Rule.
 
+Read more on how to setup a Rule to perform conflict checking with respect to a
+specific resource here: https://drupal.org/node/2090487
+
 
 == Included Rules Components ==
 
