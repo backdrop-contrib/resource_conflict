@@ -166,7 +166,7 @@ function _resource_conflict_query_for_conflicts($time_spans, $nid) {
 
     foreach ($time_spans as $time_span) {
       $query = db_select('node', 'n');
-      $query->join($date_table, 'date_table', 'n.nid = date_table.revision_id');
+      $query->join($date_table, 'date_table', 'n.vid = date_table.revision_id');
       $query->fields('n', array('nid'))
             ->condition(db_or()
               ->condition(db_and()->condition($start_field, $time_span['start'], '<=')->condition($end_field, $time_span['start'], '>'))
