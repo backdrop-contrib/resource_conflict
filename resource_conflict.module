@@ -204,12 +204,14 @@ function resource_conflict_form_alter(&$form, $form_state, $form_id) {
     '#group' => 'additional_settings',
   );
 
+  $disabled_msg = t('To set up this content type for conflict checking, first add a Date field with a required end date (repeate dates are supported). When the conditions have been met, this section will be enabled for configuration.');
+
   // The user is adding a new content type
   if ($type == NULL) {
     $form['resource_conflict_set']['rc_info'] = array(
       '#prefix' => '<p>',
       '#suffix' => '</p>',
-      '#value' => t('To set up this content type for conflict checking, first add a Date field with required start and end dates. When the conditions have been met, this section will be enabled for configuration.'),
+      '#markup' => $disabled_msg,
     );
     return;
   }
@@ -224,11 +226,10 @@ function resource_conflict_form_alter(&$form, $form_state, $form_id) {
 
   if (empty($date_fields)) {
     $form['resource_conflict_set']['requirements'] = array(
-      '#type' => 'markup',
       '#prefix' => '<p>', 
       '#suffix' => '</p>',
       '#weight' => -10,
-      '#markup' => t('This content type does not contain any suitable Date fields. Please add at least one Date field with required start and end dates.'),
+      '#markup' => $disabled_msg,
     );
   }
   else {
