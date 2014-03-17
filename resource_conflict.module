@@ -57,6 +57,9 @@ function _resource_conflict_get_timespans($node) {
     return array();
   }
 
+  $start_buffer = variable_get('rc_conflict_buffer_start_' . $node->type, '');
+  $end_buffer = variable_get('rc_conflict_buffer_end_' . $node->type, '');
+
   $date_field_info = field_info_field($date_field);
   $date_format = date_type_format($date_field_info['type']);
   $date_items = field_get_items('node', $node, $date_field);
@@ -74,6 +77,20 @@ function _resource_conflict_get_timespans($node) {
     // Skip unless the user filled in a start and end date
     if (empty($start) || empty($end)) {
       continue;
+    }
+
+    if (!empty($start_buffer)) {
+      $dateobj = DateObject::createFromFormat($date_format, $start);
+      if ($dateobj->modify($start_buffer)) {
+       $start = $dateobj->format($date_format);
+      }
+    }
+
+    if (!empty($end_buffer)) {
+      $dateobj = DateObject::createFromFormat($date_format, $end);
+      if ($dateobj->modify($end_buffer)) {
+       $end = $dateobj->format($date_format);
+      }
     }
 
     // Unix stamps should be interpreted as integers, but field_get_items pulls them
@@ -249,10 +266,41 @@ function resource_conflict_form_alter(&$form, $form_state, $form_id) {
       '#description' => t("Select the date field to use to check for resource conflicts."),
     );
 
+    $form['resource_conflict_set']['rc_conflict_buffer_start'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Conflict Buffer - Start'),
+      '#description' => t('Added to the start date of bookings to extend the conflict zone. !strtotime format. Example: "-5 minutes".', array('!strtotime' => l('strtotime', 'http://us1.php.net/strtotime'))),
+      '#default_value' => variable_get('rc_conflict_buffer_start_' . $type, ''),
+    );
+
+    $form['resource_conflict_set']['rc_conflict_buffer_end'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Conflict Buffer - End'),
+      '#description' => t('Added to the end date of bookings to extend the conflict zone. !strtotime format. Example: "+5 minutes".', array('!strtotime' => l('strtotime', 'http://us1.php.net/strtotime'))),
+      '#default_value' => variable_get('rc_conflict_buffer_end_' . $type, ''),
+    );
+
   }
 
   // Add our custom submission handler so we can manage the RC settings
+  $form['#validate'][] = 'resource_conflict_form_validate';
   $form['#submit'][] = 'resource_conflict_form_submit';
+}
+
+/**
+ * Our custom validate handler for when a content type is saved
+ */
+function resource_conflict_form_validate($form, &$form_state) {
+  if (!empty($form_state['values']['rc_conflict_buffer_start'])) {
+    if (strtotime($form_state['values']['rc_conflict_buffer_start']) === false) {
+      form_set_error('rc_conflict_buffer_start', t('Start buffer not valid. Check PHP documentation for strtotime().'));
+    }
+  }
+  if (!empty($form_state['values']['rc_conflict_buffer_end'])) {
+    if (strtotime($form_state['values']['rc_conflict_buffer_end']) === false) {
+      form_set_error('rc_conflict_buffer_end', t('End buffer not valid. Check PHP documentation for strtotime().'));
+    }
+  }
 }
 
 /**

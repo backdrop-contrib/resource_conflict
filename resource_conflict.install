@@ -8,6 +8,7 @@ function resource_conflict_uninstall() {
   _resource_conflict_variable_delete_like('rc_type_%');
   _resource_conflict_variable_delete_like('rc_date_field_%');
   _resource_conflict_variable_delete_like('rc_reference_fields_%');
+  _resource_conflict_variable_delete_like('rc_conflict_buffer_%');
 
   variable_del('rc_types');
 }
