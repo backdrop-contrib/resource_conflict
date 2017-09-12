@@ -5,6 +5,4 @@ dependencies[] = entityreference
 dependencies[] = rules
 dependencies[] = date
 dependencies[] = date_api
-project = "resource_conflict"
 core = "7.x"
-

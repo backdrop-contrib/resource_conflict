@@ -1,23 +1,28 @@
 <?php
 
 /**
+ * @file
+ * Provides general functionality for the resource conflict module.
+ */
+
+/**
  * Implements hook_node_validate().
  *
  * Fire a rule event if this node is enabled for RC.
  * If the Rule executed our action "resource_conflict_form_error"
  * Then a session var would have been set that indicates there was a conflict
- * and we should set a form error
+ * and we should set a form error.
  */
 function resource_conflict_node_validate($node, $form) {
   if (!variable_get('rc_type_' . $node->type, FALSE)) {
-    // Conflict handling is not enabled for this content type
+    // Conflict handling is not enabled for this content type.
     return;
   }
-  
+
   rules_invoke_event('resource_conflict_node_validation', $node, $form);
 
   if (isset($_SESSION['resource_conflict_message'])) {
-    // Find the date field that handles conflicts
+    // Find the date field that handles conflicts.
     $date_field = variable_get('rc_date_field_' . $node->type, FALSE);
     $form_error = theme('item_list', $_SESSION['resource_conflict_message']);
     $message = implode('<br/>', $_SESSION['resource_conflict_message']);
@@ -27,7 +32,7 @@ function resource_conflict_node_validate($node, $form) {
 }
 
 /**
- * Check a node for conflicts
+ * Check a node for conflicts.
  */
 function _resource_conflict_get_conflicting_nids($node) {
   // Check the content type to make sure conflict handling is enabled.
@@ -37,7 +42,7 @@ function _resource_conflict_get_conflicting_nids($node) {
 
   $time_spans = _resource_conflict_get_timespans($node);
 
-  // Back out if we don't have date data to compare with
+  // Back out if we don't have date data to compare with.
   if (empty($time_spans)) {
     return array();
   }
@@ -46,8 +51,7 @@ function _resource_conflict_get_conflicting_nids($node) {
 }
 
 /**
- * Load an array of start/end times for the RC enabled date field
- * from the passed in node
+ * Load an array of start/end times for the RC enabled date field on the node.
  */
 function _resource_conflict_get_timespans($node) {
   $time_spans = array();
@@ -63,10 +67,11 @@ function _resource_conflict_get_timespans($node) {
   $date_field_info = field_info_field($date_field);
   $date_format = date_type_format($date_field_info['type']);
   $date_items = field_get_items('node', $node, $date_field);
-  
-  // Date repeat fields may have multiple values, so we iterate over each
+
+  // Date repeat fields may have multiple values, so we iterate over each.
   foreach ($date_items as $single_repetition_date) {
-    // Avoid the "Add another item" element that is added for date repeat fields
+    // Avoid the "Add another item" element that is added for date repeat
+    // fields.
     if (!is_array($single_repetition_date)) {
       continue;
     }
@@ -74,7 +79,7 @@ function _resource_conflict_get_timespans($node) {
     $start = $single_repetition_date['value'];
     $end = $single_repetition_date['value2'];
 
-    // Skip unless the user filled in a start and end date
+    // Skip unless the user filled in a start and end date.
     if (empty($start) || empty($end)) {
       continue;
     }
@@ -82,24 +87,25 @@ function _resource_conflict_get_timespans($node) {
     if (!empty($start_buffer)) {
       $dateobj = DateObject::createFromFormat($date_format, $start);
       if ($dateobj->modify($start_buffer)) {
-       $start = $dateobj->format($date_format);
+        $start = $dateobj->format($date_format);
       }
     }
 
     if (!empty($end_buffer)) {
       $dateobj = DateObject::createFromFormat($date_format, $end);
       if ($dateobj->modify($end_buffer)) {
-       $end = $dateobj->format($date_format);
+        $end = $dateobj->format($date_format);
       }
     }
 
-    // Unix stamps should be interpreted as integers, but field_get_items pulls them
-    // out as strings. We need to cast back to int or our database comparisons fail
+    // Unix stamps should be interpreted as integers, but field_get_items pulls
+    // them out as strings. We need to cast back to int or our database
+    // comparisons fail.
     if ($date_format == DATE_FORMAT_UNIX) {
-      $start = (int)$start;
-      $end = (int)$end;
+      $start = (int) $start;
+      $end = (int) $end;
     }
-    
+
     $time_spans[] = array(
       'start' => $start,
       'end' => $end,
@@ -110,9 +116,10 @@ function _resource_conflict_get_timespans($node) {
 }
 
 /**
- * Rules Action: poor mans way of passing a form error to our form validation
- * for a resource conflict node form. See resource_conflict_node_validate()
- * for how this session var is used to set a form error
+ * Rules Action: Poor mans way of passing a form error to form validation.
+ *
+ * Used for a resource conflict node form. See resource_conflict_node_validate()
+ * for how this session var is used to set a form error.
  */
 function resource_conflict_form_error($message) {
   $_SESSION['resource_conflict_message'][] = $message;
@@ -127,7 +134,7 @@ function resource_conflict_contains_conflict($node) {
     return FALSE;
   }
 
-  // Fire Rules event for each conflict detected
+  // Fire Rules event for each conflict detected.
   foreach ($conflicting_node_ids as $conflicting_node_id) {
     $conflicting_node = node_load($conflicting_node_id);
     rules_invoke_event('resource_conflict_conflict_detected', $node, $conflicting_node);
@@ -137,7 +144,7 @@ function resource_conflict_contains_conflict($node) {
 }
 
 /**
- * Rules Action: load list of conflicting nodes, if any
+ * Rules Action: load list of conflicting nodes, if any.
  */
 function resource_conflict_load_conflict_list($node) {
   $conflicting_node_ids = _resource_conflict_get_conflicting_nids($node);
@@ -154,27 +161,28 @@ function resource_conflict_load_conflict_list($node) {
 }
 
 /**
- * Determine if any conflict enabled nodes overlap the specified times
+ * Determine if any conflict enabled nodes overlap the specified times.
  *
  * 1. $start is within the event time
  * 2. $end is within the event time
  * 3. The event encompasses $start and $end
- * 4. Allow the end of one event to occur at the start of the next
+ * 4. Allow the end of one event to occur at the start of the next.
  *
- * @param $time_spans
+ * @param array $time_spans
  *   An array of 'time span' arrays with the following keys:
  *   - start: Start of an event
  *   - end: End of an event
  *   The date format of each pair is that of the unsaved node's date format
- *   All date fields that are compared must be of the same format
- * @param $nid
- *   The node ID of the resource that we're conflict checking for
- * @return
+ *   All date fields that are compared must be of the same format.
+ * @param int $nid
+ *   The node ID of the resource that we're conflict checking for.
+ *
+ * @return array
  *   An array of node IDs.
  */
-function _resource_conflict_query_for_conflicts($time_spans, $nid) {
+function _resource_conflict_query_for_conflicts(array $time_spans, $nid) {
   $nids = array();
-  $conflict_types = variable_get("rc_types", array());
+  $conflict_types = variable_get('rc_types', array());
   foreach ($conflict_types as $type) {
     $date_field = variable_get('rc_date_field_' . $type, FALSE);
     $date_table = '{field_data_' . $date_field . '}';
@@ -185,14 +193,14 @@ function _resource_conflict_query_for_conflicts($time_spans, $nid) {
       $query = db_select('node', 'n');
       $query->join($date_table, 'date_table', 'n.vid = date_table.revision_id');
       $query->fields('n', array('nid'))
-            ->condition(db_or()
-              ->condition(db_and()->condition($start_field, $time_span['start'], '<=')->condition($end_field, $time_span['start'], '>'))
-              ->condition(db_and()->condition($start_field, $time_span['end'], '<')->condition($end_field, $time_span['end'], '>='))
-              ->condition(db_and()->condition($start_field, $time_span['start'], '>=')->condition($end_field, $time_span['end'], '<='))
+        ->condition(db_or()
+          ->condition(db_and()->condition($start_field, $time_span['start'], '<=')->condition($end_field, $time_span['start'], '>'))
+          ->condition(db_and()->condition($start_field, $time_span['end'], '<')->condition($end_field, $time_span['end'], '>='))
+          ->condition(db_and()->condition($start_field, $time_span['start'], '>=')->condition($end_field, $time_span['end'], '<='))
             )
-            ->addTag('resource_conflict')
-            ->distinct();
-      // $nid may be null if the unsaved node was not yet created
+        ->addTag('resource_conflict')
+        ->distinct();
+      // $nid may be null if the unsaved node was not yet created.
       if ($nid) {
         $query->condition('n.nid', $nid, '<>');
       }
@@ -223,7 +231,7 @@ function resource_conflict_form_alter(&$form, $form_state, $form_id) {
 
   $disabled_msg = t('To set up this content type for conflict checking, first add a Date field with a required end date (repeate dates are supported). When the conditions have been met, this section will be enabled for configuration.');
 
-  // The user is adding a new content type
+  // The user is adding a new content type.
   if ($type == NULL) {
     $form['resource_conflict_set']['rc_info'] = array(
       '#prefix' => '<p>',
@@ -243,7 +251,7 @@ function resource_conflict_form_alter(&$form, $form_state, $form_id) {
 
   if (empty($date_fields)) {
     $form['resource_conflict_set']['requirements'] = array(
-      '#prefix' => '<p>', 
+      '#prefix' => '<p>',
       '#suffix' => '</p>',
       '#weight' => -10,
       '#markup' => $disabled_msg,
@@ -269,81 +277,85 @@ function resource_conflict_form_alter(&$form, $form_state, $form_id) {
     $form['resource_conflict_set']['rc_conflict_buffer_start'] = array(
       '#type' => 'textfield',
       '#title' => t('Conflict Buffer - Start'),
-      '#description' => t('Added to the start date of bookings to extend the conflict zone. !strtotime format. Example: "-5 minutes".', array('!strtotime' => l('strtotime', 'http://us1.php.net/strtotime'))),
+      '#description' => t('Added to the start date of bookings to extend the conflict zone. <a href="@strtotime">strtotime</a> format. Example: "-5 minutes".', array('@strtotime' => 'http://us1.php.net/strtotime')),
       '#default_value' => variable_get('rc_conflict_buffer_start_' . $type, ''),
     );
 
     $form['resource_conflict_set']['rc_conflict_buffer_end'] = array(
       '#type' => 'textfield',
       '#title' => t('Conflict Buffer - End'),
-      '#description' => t('Added to the end date of bookings to extend the conflict zone. !strtotime format. Example: "+5 minutes".', array('!strtotime' => l('strtotime', 'http://us1.php.net/strtotime'))),
+      '#description' => t('Added to the end date of bookings to extend the conflict zone. <a href="@strtotime">strtotime</a> format. Example: "+5 minutes".', array('@strtotime' => 'http://us1.php.net/strtotime')),
       '#default_value' => variable_get('rc_conflict_buffer_end_' . $type, ''),
     );
 
   }
 
-  // Add our custom submission handler so we can manage the RC settings
+  // Add our custom submission handler so we can manage the RC settings.
   $form['#validate'][] = 'resource_conflict_form_validate';
   $form['#submit'][] = 'resource_conflict_form_submit';
 }
 
 /**
- * Our custom validate handler for when a content type is saved
+ * Our custom validate handler for when a content type is saved.
  */
 function resource_conflict_form_validate($form, &$form_state) {
   if (!empty($form_state['values']['rc_conflict_buffer_start'])) {
-    if (strtotime($form_state['values']['rc_conflict_buffer_start']) === false) {
+    if (strtotime($form_state['values']['rc_conflict_buffer_start']) === FALSE) {
       form_set_error('rc_conflict_buffer_start', t('Start buffer not valid. Check PHP documentation for strtotime().'));
     }
   }
   if (!empty($form_state['values']['rc_conflict_buffer_end'])) {
-    if (strtotime($form_state['values']['rc_conflict_buffer_end']) === false) {
+    if (strtotime($form_state['values']['rc_conflict_buffer_end']) === FALSE) {
       form_set_error('rc_conflict_buffer_end', t('End buffer not valid. Check PHP documentation for strtotime().'));
     }
   }
 }
 
 /**
- * Our custom submit handler for when a content type is saved
+ * Our custom submit handler for when a content type is saved.
  */
 function resource_conflict_form_submit($form, &$form_state) {
   $type = $form_state['values']['type'];
 
   if (isset($form_state['values']['rc_type']) && $form_state['values']['rc_type'] == 1) {
     _resource_conflict_add_type($type);
-  } else {
+  }
+  else {
     _resource_conflict_remove_type($type);
   }
 }
 
 /**
- * Implements hook_field_delete_instance()
+ * Implements hook_field_delete_instance().
  *
  * If this field was assigned as an RC date field, we want to delete it's data
  * from our registry and possibly warn the user that RC was disabled for this
- * content type
+ * content type.
  */
 function resource_conflict_field_delete_instance($instance) {
   $rc_date_field = variable_get('rc_date_field_' . $instance['bundle'], FALSE);
   if ($rc_date_field == $instance['field_name']) {
     variable_del('rc_date_field_' . $instance['bundle']);
 
-    // Msg user if the content type was enabled for RC
-    $content_type_enabled = variable_get('rc_type_'. $instance['bundle'], FALSE);
+    // Msg user if the content type was enabled for RC.
+    $content_type_enabled = variable_get('rc_type_' . $instance['bundle'], FALSE);
     if ($content_type_enabled == 1) {
       $msg = t('Resource Conflict has been disabled for the %type content type as the date field has been deleted.', array('%type' => $instance['bundle']));
       drupal_set_message($msg, 'warning');
       watchdog('resource conflict', $msg, WATCHDOG_WARNING);
     }
 
-    // Delete the reg values for this content type whether it was enabled or not
+    // Delete the reg values for this content type whether it was enabled or
+    // not.
     _resource_conflict_remove_type($instance['bundle']);
   }
 }
 
 /**
- * Implements hook_field_update_instance()
- * Notice when an RC-enabled field is modified, and make sure it still meets requirements.
+ * Implements hook_field_update_instance().
+ *
+ * Notice when an RC-enabled field is modified, and make sure it still meets
+ * requirements.
  */
 function resource_conflict_field_update_instance($instance, $prior_instance) {
   if (variable_get('rc_type_' . $instance['bundle'], FALSE) && variable_get('rc_date_field_' . $instance['bundle'], FALSE) == $instance['field_name']) {
@@ -359,7 +371,7 @@ function resource_conflict_field_update_instance($instance, $prior_instance) {
 }
 
 /**
- * Adds the provided content type to our list of enabled RC types
+ * Adds the provided content type to our list of enabled RC types.
  */
 function _resource_conflict_add_type($content_type) {
   $conflict_types = variable_get("rc_types", array());
@@ -371,7 +383,7 @@ function _resource_conflict_add_type($content_type) {
 }
 
 /**
- * Removes the provided content type from our list of enabled RC types
+ * Removes the provided content type from our list of enabled RC types.
  */
 function _resource_conflict_remove_type($content_type) {
   $conflict_types = variable_get("rc_types", array());
@@ -381,18 +393,16 @@ function _resource_conflict_remove_type($content_type) {
     variable_set("rc_types", $conflict_types);
   }
 
-  variable_del('rc_type_'. $content_type);
+  variable_del('rc_type_' . $content_type);
 }
 
 /**
- * Checks if the provided field instance is compatible with our module
+ * Checks if the provided field instance is compatible with our module.
  */
 function _resource_conflict_check_field_compatibility($field_instance) {
   $field_info = field_info_field($field_instance['field_name']);
   if ($field_info['module'] == 'date' && $field_info['settings']['todate'] == 'required') {
-    return true;
+    return TRUE;
   }
-  return false;
+  return FALSE;
 }
-
-

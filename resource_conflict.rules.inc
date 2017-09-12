@@ -1,8 +1,15 @@
 <?php
+
 /**
- * Implementation of hook_rules_event_info()
+ * @file
+ * Provides rule module hooks.
+ */
+
+/**
+ * Implements hook_rules_event_info().
+ *
  * Provides a Rules event for "Resource Conflict Detected"
- * Fires during node form validation
+ * Fires during node form validation.
  */
 function resource_conflict_rules_event_info() {
   $events = array(
@@ -30,8 +37,8 @@ function resource_conflict_rules_event_info() {
           'type' => 'node',
           'label' => t('unsaved node'),
         ),
-      )
-    )
+      ),
+    ),
   );
 
   // If rules_forms is enabled, we can pass the form object as a variable
@@ -47,8 +54,9 @@ function resource_conflict_rules_event_info() {
   return $events;
 }
 
-/** 
- * Implementation of hook_rules_condition_info()
+/**
+ * Implements hook_rules_condition_info().
+ *
  * Provides a Rules condition for "contains a resource conflict"
  */
 function resource_conflict_rules_condition_info() {
@@ -61,15 +69,15 @@ function resource_conflict_rules_condition_info() {
         'node' => array(
           'type' => 'node',
           'label' => t('Node'),
-        )
+        ),
       ),
     ),
   );
 }
 
-
-/** 
- * Implementation of hook_rules_action_info()
+/**
+ * Implements hook_rules_action_info().
+ *
  * Provides a Rules action for "load list of conflicting nodes"
  */
 function resource_conflict_rules_action_info() {

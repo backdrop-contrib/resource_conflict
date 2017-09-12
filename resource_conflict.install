@@ -1,8 +1,12 @@
 <?php
-// $Id
 
 /**
- * Implementation of hook_uninstall
+ * @file
+ * Install, upgrade and uninstall hooks for the resource conflict module.
+ */
+
+/**
+ * Implements hook_uninstall().
  */
 function resource_conflict_uninstall() {
   _resource_conflict_variable_delete_like('rc_type_%');
@@ -15,25 +19,24 @@ function resource_conflict_uninstall() {
 
 /**
  * Delete all variables matching a pattern using SQL 'LIKE' syntax.
- * @param $pattern
+ *
+ * @param string $pattern
  *   The pattern of variables to delete.
  */
 function _resource_conflict_variable_delete_like($pattern) {
-  $q = "SELECT name FROM {variable} WHERE name LIKE :pattern";
-  $result = db_query($q, array(':pattern' => $pattern));
+  $sql = "SELECT name FROM {variable} WHERE name LIKE :pattern";
+  $result = db_query($sql, array(':pattern' => $pattern));
   foreach ($result as $row) {
     variable_del($row->name);
   }
 }
 
 /**
- * Remove any duplicates types that were set due to this bug:
- * https://drupal.org/node/1872030
+ * Remove any duplicates types due to this bug: https://drupal.org/node/1872030.
  *
- * We also can't trust that all the types in that array are 
- * accurate because of that bug. To address, we verify that each
- * one should actually be there by checking the individual
- * setting for that content type
+ * We also can't trust that all the types in that array are accurate because of
+ * that bug. To address, we verify that each one should actually be there by
+ * checking the individual setting for that content type.
  */
 function resource_conflict_update_7300() {
   $types = variable_get('rc_types', array());
@@ -43,11 +46,10 @@ function resource_conflict_update_7300() {
 
   foreach ($deduped_types as $index => $type) {
     if (variable_get('rc_type_' . $type, 0) !== 1) {
-      // This content type should not be enabled
+      // This content type should not be enabled.
       unset($deduped_types[$index]);
     }
   }
 
   variable_set('rc_types', $deduped_types);
 }
-

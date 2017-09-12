@@ -2,7 +2,7 @@
 
 /**
  * @file
- * Default rule configurations for Resource Conflict. 
+ * Default rule configurations for Resource Conflict.
  */
 
 /**
@@ -11,7 +11,8 @@
 function resource_conflict_default_rules_configuration() {
   $rules = array();
 
-  // Add an example reaction rule to display a warning message if conflicts detected
+  // Add an example reaction rule to display a warning message if conflicts
+  // detected.
   $rules['rules_display_conflict_message_on_node_save'] = entity_import('rules_config', '{ "rules_display_conflict_message_on_node_save" : {
     "LABEL" : "Display conflict message on node save",
       "PLUGIN" : "reaction rule",
@@ -38,4 +39,3 @@ function resource_conflict_default_rules_configuration() {
 
   return($rules);
 }
-?>
