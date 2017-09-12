@@ -13,9 +13,13 @@
  * Then a session var would have been set that indicates there was a conflict
  * and we should set a form error.
  */
-function resource_conflict_node_validate($node, $form) {
+function resource_conflict_node_validate($node, $form, &$form_state) {
+  // Don't validate on delete.
+  if ($form_state['values']['op'] == t('Delete')) {
+    return;
+  }
+  // Conflict handling is not enabled for this content type.
   if (!variable_get('rc_type_' . $node->type, FALSE)) {
-    // Conflict handling is not enabled for this content type.
     return;
   }
 
