@@ -33,11 +33,14 @@ function resource_conflict_node_validate($node, $form) {
 
 /**
  * Check a node for conflicts.
+ *
+ * @return array
+ *   A list of nodes.
  */
 function _resource_conflict_get_conflicting_nids($node) {
   // Check the content type to make sure conflict handling is enabled.
   if (!variable_get('rc_type_' . $node->type, FALSE)) {
-    return;
+    return array();
   }
 
   $time_spans = _resource_conflict_get_timespans($node);
