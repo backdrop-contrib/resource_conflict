@@ -15,7 +15,7 @@
  */
 function resource_conflict_node_validate($node, $form, &$form_state) {
   // Don't validate on delete.
-  if ($form_state['values']['op'] == t('Delete')) {
+  if (isset($form_state['values']['op']) && $form_state['values']['op'] == t('Delete')) {
     return;
   }
   // Conflict handling is not enabled for this content type.
@@ -27,9 +27,7 @@ function resource_conflict_node_validate($node, $form, &$form_state) {
 
   if (isset($_SESSION['resource_conflict_message'])) {
     // Find the date field that handles conflicts.
-    $date_field = variable_get('rc_date_field_' . $node->type, FALSE);
-    $form_error = theme('item_list', $_SESSION['resource_conflict_message']);
-    $message = implode('<br/>', $_SESSION['resource_conflict_message']);
+    $message = implode('<br>', $_SESSION['resource_conflict_message']);
     form_set_error('', $message);
     unset($_SESSION['resource_conflict_message']);
   }
@@ -74,7 +72,9 @@ function _resource_conflict_get_timespans($node) {
   $date_field_info = field_info_field($date_field);
   $date_format = date_type_format($date_field_info['type']);
   $date_items = field_get_items('node', $node, $date_field);
-
+  if (!$date_items) {
+    return array();
+  }
   // Date repeat fields may have multiple values, so we iterate over each.
   foreach ($date_items as $single_repetition_date) {
     // Avoid the "Add another item" element that is added for date repeat
