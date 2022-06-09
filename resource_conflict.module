@@ -23,6 +23,12 @@ function resource_conflict_node_validate($node, $form, &$form_state) {
     return;
   }
 
+  // Don't validate when adding exceptions or additions.
+  if (strpos($form_state['triggering_element']['#name'], 'additions_add') !== FALSE
+    || strpos($form_state['triggering_element']['#name'], 'exceptions_add') !== FALSE) {
+    return;
+  }
+
   rules_invoke_event('resource_conflict_node_validation', $node, $form);
 
   if (isset($_SESSION['resource_conflict_message'])) {
@@ -190,8 +196,14 @@ function resource_conflict_load_conflict_list($node) {
 function _resource_conflict_query_for_conflicts(array $time_spans, $nid) {
   $nids = array();
   $conflict_types = variable_get('rc_types', array());
+
+  $date_fields = array();
   foreach ($conflict_types as $type) {
     $date_field = variable_get('rc_date_field_' . $type, FALSE);
+    $date_fields[$date_field][] = $type;
+  }
+
+  foreach ($date_fields as $date_field => $types) {
     $date_table = '{field_data_' . $date_field . '}';
     $start_field = 'date_table.' . $date_field . '_value';
     $end_field = 'date_table.' . $date_field . '_value2';
@@ -200,11 +212,12 @@ function _resource_conflict_query_for_conflicts(array $time_spans, $nid) {
       $query = db_select('node', 'n');
       $query->join($date_table, 'date_table', 'n.vid = date_table.revision_id');
       $query->fields('n', array('nid'))
+        ->condition('bundle', $types, 'IN')
         ->condition(db_or()
           ->condition(db_and()->condition($start_field, $time_span['start'], '<=')->condition($end_field, $time_span['start'], '>'))
           ->condition(db_and()->condition($start_field, $time_span['end'], '<')->condition($end_field, $time_span['end'], '>='))
           ->condition(db_and()->condition($start_field, $time_span['start'], '>=')->condition($end_field, $time_span['end'], '<='))
-            )
+        )
         ->addTag('resource_conflict')
         ->distinct();
       // $nid may be null if the unsaved node was not yet created.
