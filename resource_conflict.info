@@ -1,7 +1,6 @@
 name = Resource Conflict
 description = Provides a mechanism for notifying of conflict based on entries in a Date field
-dependencies[] = entity
+dependencies[] = entity_plus
 dependencies[] = rules
-dependencies[] = date
-dependencies[] = date_api
-core = "7.x"
+backdrop = 1.x
+type = module

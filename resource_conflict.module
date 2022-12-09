@@ -19,13 +19,13 @@ function resource_conflict_node_validate($node, $form, &$form_state) {
     return;
   }
   // Conflict handling is not enabled for this content type.
-  if (!variable_get('rc_type_' . $node->type, FALSE)) {
+  if (!config_get('resource_conflict.' . $node->type, 'rc_type')) {
     return;
   }
 
   // Don't validate when adding exceptions or additions.
   if (strpos($form_state['triggering_element']['#name'], 'additions_add') !== FALSE
-    || strpos($form_state['triggering_element']['#name'], 'exceptions_add') !== FALSE) {
+     || strpos($form_state['triggering_element']['#name'], 'exceptions_add') !== FALSE) {
     return;
   }
 
@@ -47,7 +47,7 @@ function resource_conflict_node_validate($node, $form, &$form_state) {
  */
 function _resource_conflict_get_conflicting_nids($node) {
   // Check the content type to make sure conflict handling is enabled.
-  if (!variable_get('rc_type_' . $node->type, FALSE)) {
+  if (!config_get('resource_conflict.' . $node->type,'rc_type')) {
     return array();
   }
 
@@ -67,13 +67,13 @@ function _resource_conflict_get_conflicting_nids($node) {
 function _resource_conflict_get_timespans($node) {
   $time_spans = array();
 
-  $date_field = variable_get('rc_date_field_' . $node->type, FALSE);
+  $date_field = config_get('resource_conflict.' . $node->type, 'rc_date_field');
   if (!$date_field) {
     return array();
   }
 
-  $start_buffer = variable_get('rc_conflict_buffer_start_' . $node->type, '');
-  $end_buffer = variable_get('rc_conflict_buffer_end_' . $node->type, '');
+  $start_buffer = config_get('resource_conflict.' . $node->type, 'rc_conflict_buffer_start');
+  $end_buffer = config_get('resource_conflict.' . $node->type, 'rc_conflict_buffer_end');
 
   $date_field_info = field_info_field($date_field);
   $date_format = date_type_format($date_field_info['type']);
@@ -98,14 +98,14 @@ function _resource_conflict_get_timespans($node) {
     }
 
     if (!empty($start_buffer)) {
-      $dateobj = DateObject::createFromFormat($date_format, $start);
+      $dateobj = BackdropDateTime::createFromFormat($date_format, $start);
       if ($dateobj->modify($start_buffer)) {
         $start = $dateobj->format($date_format);
       }
     }
 
     if (!empty($end_buffer)) {
-      $dateobj = DateObject::createFromFormat($date_format, $end);
+      $dateobj = BackdropDateTime::createFromFormat($date_format, $end);
       if ($dateobj->modify($end_buffer)) {
         $end = $dateobj->format($date_format);
       }
@@ -195,11 +195,14 @@ function resource_conflict_load_conflict_list($node) {
  */
 function _resource_conflict_query_for_conflicts(array $time_spans, $nid) {
   $nids = array();
-  $conflict_types = variable_get('rc_types', array());
+  $conflict_types = config_get('resource_conflict.types', 'rc_types');
+  if (is_null($conflict_types)) {
+    $conflict_types = array();
+  }
 
   $date_fields = array();
   foreach ($conflict_types as $type) {
-    $date_field = variable_get('rc_date_field_' . $type, FALSE);
+    $date_field = config_get('resource_conflict.' . $type, 'rc_date_field');
     $date_fields[$date_field][] = $type;
   }
 
@@ -241,6 +244,7 @@ function resource_conflict_form_alter(&$form, $form_state, $form_id) {
   }
 
   $type = (isset($form['old_type']) && isset($form['old_type']['#value'])) ? $form['old_type']['#value'] : NULL;
+  $config = config('resource_conflict.' . $type); 
 
   $form['resource_conflict_set'] = array(
     '#type' => 'fieldset',
@@ -249,7 +253,7 @@ function resource_conflict_form_alter(&$form, $form_state, $form_id) {
     '#group' => 'additional_settings',
   );
 
-  $disabled_msg = t('To set up this content type for conflict checking, first add a Date field with a required end date (repeate dates are supported). When the conditions have been met, this section will be enabled for configuration.');
+  $disabled_msg = t('To set up this content type for conflict checking, first add a Date field with a required end date (repeated dates are supported). When the conditions have been met, this section will be enabled for configuration.');
 
   // The user is adding a new content type.
   if ($type == NULL) {
@@ -281,7 +285,7 @@ function resource_conflict_form_alter(&$form, $form_state, $form_id) {
     $form['resource_conflict_set']['rc_type'] = array(
       '#type' => 'checkbox',
       '#title' => t('Enable resource conflict checking for this content type'),
-      '#default_value' => variable_get('rc_type_' . $type, 0),
+      '#default_value' => $config->get('rc_type'),
       '#weight' => -8,
     );
 
@@ -290,7 +294,7 @@ function resource_conflict_form_alter(&$form, $form_state, $form_id) {
       '#title' => t('Field to use as the date for conflict checks'),
       '#options' => $date_fields,
       '#multiple' => FALSE,
-      '#default_value' => variable_get('rc_date_field_' . $type, FALSE),
+      '#default_value' => $config->get('rc_date_field'),
       '#description' => t("Select the date field to use to check for resource conflicts."),
     );
 
@@ -298,14 +302,14 @@ function resource_conflict_form_alter(&$form, $form_state, $form_id) {
       '#type' => 'textfield',
       '#title' => t('Conflict Buffer - Start'),
       '#description' => t('Added to the start date of bookings to extend the conflict zone. <a href="@strtotime">strtotime</a> format. Example: "-5 minutes".', array('@strtotime' => 'http://us1.php.net/strtotime')),
-      '#default_value' => variable_get('rc_conflict_buffer_start_' . $type, ''),
+      '#default_value' => $config->get('rc_conflict_buffer_start'),
     );
 
     $form['resource_conflict_set']['rc_conflict_buffer_end'] = array(
       '#type' => 'textfield',
       '#title' => t('Conflict Buffer - End'),
       '#description' => t('Added to the end date of bookings to extend the conflict zone. <a href="@strtotime">strtotime</a> format. Example: "+5 minutes".', array('@strtotime' => 'http://us1.php.net/strtotime')),
-      '#default_value' => variable_get('rc_conflict_buffer_end_' . $type, ''),
+      '#default_value' => $config->get('rc_conflict_buffer_end'),
     );
 
   }
@@ -339,6 +343,12 @@ function resource_conflict_form_submit($form, &$form_state) {
 
   if (isset($form_state['values']['rc_type']) && $form_state['values']['rc_type'] == 1) {
     _resource_conflict_add_type($type);
+    $config = config('resource_conflict.' . $type);
+    foreach (element_children($form['resource_conflict_set']) as $key) {
+      $config->set($key, $form_state['values'][$key]);
+    }
+    $config->set('type', $type);
+    $config->save();
   }
   else {
     _resource_conflict_remove_type($type);
@@ -353,15 +363,17 @@ function resource_conflict_form_submit($form, &$form_state) {
  * content type.
  */
 function resource_conflict_field_delete_instance($instance) {
-  $rc_date_field = variable_get('rc_date_field_' . $instance['bundle'], FALSE);
+  $config = config('resource_conflict.' . $instance['bundle']);
+  $rc_date_field = $config->get('rc_date_field');
   if ($rc_date_field == $instance['field_name']) {
-    variable_del('rc_date_field_' . $instance['bundle']);
+    $config->clear('rc_date_field');
+    $config->save();
 
     // Msg user if the content type was enabled for RC.
-    $content_type_enabled = variable_get('rc_type_' . $instance['bundle'], FALSE);
+    $content_type_enabled = $config->get('rc_type');
     if ($content_type_enabled == 1) {
       $msg = t('Resource Conflict has been disabled for the %type content type as the date field has been deleted.', array('%type' => $instance['bundle']));
-      drupal_set_message($msg, 'warning');
+      backdrop_set_message($msg, 'warning');
       watchdog('resource conflict', $msg, WATCHDOG_WARNING);
     }
 
@@ -378,13 +390,16 @@ function resource_conflict_field_delete_instance($instance) {
  * requirements.
  */
 function resource_conflict_field_update_instance($instance, $prior_instance) {
-  if (variable_get('rc_type_' . $instance['bundle'], FALSE) && variable_get('rc_date_field_' . $instance['bundle'], FALSE) == $instance['field_name']) {
+  $config = config('resource_conflict.' . $instance['bundle']);
+
+  if ($config->get('rc_type') && $config->get('rc_date_field') == $instance['field_name']) {
     if (!_resource_conflict_check_field_compatibility($instance)) {
-      variable_del('rc_date_field_' . $instance['bundle']);
+      $config->clear('rc_date_field');
+      $config->save();
       _resource_conflict_remove_type($instance['bundle']);
 
       $msg = t('Resource Conflict has been disabled for the %type content type as the date field no longer meets requirements', array('%type' => $instance['bundle']));
-      drupal_set_message($msg, 'warning');
+      backdrop_set_message($msg, 'warning');
       watchdog('resource conflict', $msg, WATCHDOG_WARNING);
     }
   }
@@ -394,26 +409,39 @@ function resource_conflict_field_update_instance($instance, $prior_instance) {
  * Adds the provided content type to our list of enabled RC types.
  */
 function _resource_conflict_add_type($content_type) {
-  $conflict_types = variable_get("rc_types", array());
+  $config = config('resource_conflict.types');
+  $conflict_types = $config->get("rc_types");
+  if (is_null($conflict_types)) {
+    $conflict_types = array();
+  }
 
   if (!in_array($content_type, $conflict_types)) {
     $conflict_types[] = $content_type;
-    variable_set("rc_types", $conflict_types);
+    $config->set("rc_types", $conflict_types);
+    $config->save();
   }
+
+
 }
 
 /**
  * Removes the provided content type from our list of enabled RC types.
  */
 function _resource_conflict_remove_type($content_type) {
-  $conflict_types = variable_get("rc_types", array());
+  $config = config('resource_conflict.types');
+  $conflict_types = $config->get("rc_types");
+  if (is_null($conflict_types)) {
+    $conflict_types = array();
+  }
 
   if (($key = array_search($content_type, $conflict_types)) !== FALSE) {
     unset($conflict_types[$key]);
-    variable_set("rc_types", $conflict_types);
+    $config->set("rc_types", $conflict_types);
+    $config->save();
   }
 
-  variable_del('rc_type_' . $content_type);
+  $config_type = config('resource_conflict.' . $content_type);
+  $config_type->delete();
 }
 
 /**
@@ -425,4 +453,22 @@ function _resource_conflict_check_field_compatibility($field_instance) {
     return TRUE;
   }
   return FALSE;
+}
+
+/**
+ * Implements hook_config_info().
+ */
+function resource_conflict_config_info() {
+  $prefixes['resource_conflict'] = array(
+    'name_key' => 'type',
+    'label_key' => 'type',
+    'group' => t('Resource conflict'),
+  );
+
+  $prefixes['resource_conflict.types'] = array(
+    'label' => t('Resource conflict settings'),
+    'group' => t('Resource conflict'),
+  );
+
+  return $prefixes;
 }

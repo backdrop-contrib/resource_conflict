@@ -1,4 +1,5 @@
-= Resource Conflict =
+Resource Conflict
+==================
 
 This module allows for users to detect overlapping dates and respond with Rules.
 This is most often used for tracking bookable resources.  For example, a student
@@ -9,33 +10,33 @@ By default, this module throws a form error for every overlapping date it finds
 among conflict-enabled nodes. It is intended to be customized using Rules, for
 example to only throw errors when certain field values are identical.
 
-== Requirements ==
+Dependencies
+------------
 
-Entity: http://drupal.org/project/entity
-Rules: http://drupal.org/project/rules
-Date: http://drupal.org/project/date
+- Entity Plus: https://backdropcms.org/project/entity_plus
+- Rules: https://backdropcms.org/project/rules
 
-== Installation ==
+Installation
+------------
 
-Download the module to your modules directory, and enable it from admin/modules.
+- Install this module using the [official Backdrop CMS instructions](https://backdropcms.org/guide/modules).
 
 You may wish to disable or modify the built in example Rule, which shows a form
 error message for conflicts as they are detected.
 
-== Usage ==
+Usage
+-----
 
-1) Create a content type with a date field.
-2) On the Content Type Edit page, enable Conflict Checking for this Content
-   Type. Select the date field which should be used for conflict checking, and
-   save the form.
-3) Create two nodes with overlapping dates to see the default Rule in action. Or
-   create your own Rule.
+1. Create a content type with a date field.
+2. On the Content Type Edit page, enable Conflict Checking for this Content Type. Select the date field which should be used for conflict checking, and save the form.
+3. Create two nodes with overlapping dates to see the default Rule in action. Or create your own Rule.
 
 Read more on how to setup a Rule to perform conflict checking with respect to a
 specific resource here: https://drupal.org/node/2090487
 
 
-== Included Rules Components ==
+Included Rules Components
+-------------------------
 
 EVENT: A RESOURCE CONFLICT WAS DETECTED
 
@@ -71,22 +72,33 @@ creative uses for it. When this action fires, the next resource conflict enabled
 node to go through validation will get a form error on the resource conflict
 enabled date field.
 
-== To Do ==
+To Do
+-----
 
-* Setting a form validation error currently works by setting a variable in
-    $_SESSION, and retrieving it in hook_node_validate. This is open to all
-    sorts of abuse, and if mis-used properly could throw errors on the wrong
-    node forms. At the very least, I should set a time expiry on these messages
-    to avoid accidental abuse. Proper caching would be even smarter.
-
+* Setting a form validation error currently works by setting a variable in $_SESSION, and retrieving it in hook_node_validate. This is open to all sorts of abuse, and if mis-used properly could throw errors on the wrong node forms. At the very least, we should set a time expiry on these messages to avoid accidental abuse. Proper caching would be even smarter.
 * Make ANY fieldable entity capable of handling conflict detection.
 
 
-== Contact ==
-This module was originally developed by Andrew Berry (andrewberry@sentex.net)
+Credits
+------
+
+This module was originally developed for Drupal 7 by Andrew Berry (andrewberry@sentex.net)
 for use at the Protein Dynamics lab at the University of Guelph.
 
 It was re-written for Rules and Entity integration by Campbell Vertesi
 (campbell@vertesi.com) for use on a private project.
 
-Project Page: http://drupal.org/project/resource_conflict
+Ported to Backdrop CMS by:
+- [slackstone](https://github.com/slackstone)
+- [argiepiano](https://github.com/argiepiano)
+
+Current maintainers
+-------------------
+- [slackstone](https://github.com/slackstone)
+- [argiepiano](https://github.com/argiepiano)
+
+License
+-------
+
+This project is GPL v2 software. See the LICENSE.txt file in this directory for
+complete text.
